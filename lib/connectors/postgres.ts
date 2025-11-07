@@ -9,7 +9,8 @@ export type PgCfg = {
   password: string;
   database: string;
   schema?: string; // default 'public'
-  table: string;
+  table?: string;
+  query?: string;
   ssl?: boolean;   // optional; off by default for local docker
 };
 
@@ -44,6 +45,9 @@ export async function pgSchema(cfg: PgCfg): Promise<SchemaColumn[]> {
   const client = pgClient(cfg);
   await client.connect();
   try {
+    if (!cfg.table) {
+      throw new Error("Postgres schema discovery requires 'table'");
+    }
     const sch = cfg.schema || "public";
     const q = `
       SELECT column_name, data_type
@@ -52,7 +56,7 @@ export async function pgSchema(cfg: PgCfg): Promise<SchemaColumn[]> {
       ORDER BY ordinal_position
     `;
     const r = await client.query(q, [sch, cfg.table]);
-    return r.rows.map((x) => ({
+    return r.rows.map((x: any) => ({
       name: x.column_name,
       type: String(x.data_type).toUpperCase(),
     }));
@@ -66,6 +70,20 @@ export async function pgReadRows(cfg: PgCfg): Promise<Row[]> {
   const client = pgClient(cfg);
   await client.connect();
   try {
+    const rawQuery = (cfg.query || "").trim();
+    if (rawQuery) {
+      const lowered = rawQuery.toLowerCase();
+      if (!lowered.startsWith("select") && !lowered.startsWith("with")) {
+        throw new Error("Postgres query must start with SELECT or WITH");
+      }
+      const r = await client.query(rawQuery);
+      return r.rows as Row[];
+    }
+
+    if (!cfg.table) {
+      throw new Error("Postgres source requires a table or query");
+    }
+
     const sch = cfg.schema || "public";
     const r = await client.query(`SELECT * FROM "${sch}"."${cfg.table}"`);
     return r.rows as Row[];
@@ -77,6 +95,9 @@ export async function pgReadRows(cfg: PgCfg): Promise<Row[]> {
 /** Insert rows into schema.table (naive row-by-row insert) */
 export async function pgWriteRows(cfg: PgCfg, rows: Row[]): Promise<void> {
   if (!rows.length) return;
+  if (!cfg.table) {
+    throw new Error("Postgres destination requires 'table'");
+  }
   const client = pgClient(cfg);
   await client.connect();
   try {

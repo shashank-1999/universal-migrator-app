@@ -8,10 +8,11 @@ type MsCfg = {
   password: string;
   database: string;
   schema?: string;   // default "dbo"
-  table: string;
+  table?: string;
+  query?: string;
 };
 
-function toPoolConfig(c: MsCfg): sql.config {
+function toPoolConfig(c: MsCfg): any {
   return {
     server: c.host,
     port: c.port ? Number(c.port) : 1433,
@@ -41,6 +42,9 @@ export async function mssqlSchema(cfg: MsCfg): Promise<SchemaColumn[]> {
   const pool = new sql.ConnectionPool(toPoolConfig(cfg));
   await pool.connect();
   try {
+    if (!cfg.table) {
+      throw new Error("SQL Server schema discovery requires 'table'");
+    }
     const r = await pool.request()
       .input("schema", sql.NVarChar, sch)
       .input("table", sql.NVarChar, cfg.table)
@@ -66,6 +70,20 @@ export async function mssqlReadRows(cfg: MsCfg): Promise<Row[]> {
   const pool = new sql.ConnectionPool(toPoolConfig(cfg));
   await pool.connect();
   try {
+    const rawQuery = (cfg.query || "").trim();
+    if (rawQuery) {
+      const lowered = rawQuery.toLowerCase();
+      if (!lowered.startsWith("select") && !lowered.startsWith("with")) {
+        throw new Error("SQL Server query must start with SELECT or WITH");
+      }
+      const r = await pool.request().query(rawQuery);
+      return r.recordset as Row[];
+    }
+
+    if (!cfg.table) {
+      throw new Error("SQL Server source requires a table or query");
+    }
+
     const r = await pool.request().query(`SELECT * FROM [${sch}].[${cfg.table}]`);
     return r.recordset as Row[];
   } finally {
@@ -74,7 +92,7 @@ export async function mssqlReadRows(cfg: MsCfg): Promise<Row[]> {
 }
 
 /** Return identity column name if table has one, else null */
-async function getIdentityColumn(pool: sql.ConnectionPool, schema: string, table: string): Promise<string | null> {
+async function getIdentityColumn(pool: any, schema: string, table: string): Promise<string | null> {
   const q = await pool.request()
     .input("schema", sql.NVarChar, schema)
     .input("table", sql.NVarChar, table)
@@ -89,6 +107,10 @@ async function getIdentityColumn(pool: sql.ConnectionPool, schema: string, table
 
 export async function mssqlWriteRows(cfg: MsCfg, rows: Row[]): Promise<void> {
   if (!rows.length) return;
+
+  if (!cfg.table) {
+    throw new Error("SQL Server destination requires 'table'");
+  }
 
   const sch = cfg.schema || "dbo";
   const pool = new sql.ConnectionPool(toPoolConfig(cfg));
