@@ -21,6 +21,9 @@ Open the URL printed (usually http://localhost:3000).
 Follow the path that matches your setup so you can run the build that includes the new source query box.
 
 ### 1. First-time setup (no local copy yet)
+Choose one of the download paths below, then follow the rest of this guide.
+
+#### Option A: Clone with Git (recommended)
 Clone the repository from the canonical remote. Replace `<repo-url>` with the HTTPS/SSH address that hosts this project (for example, a GitHub or GitLab URL).
 
 ```bash
@@ -30,6 +33,14 @@ npm install
 ```
 
 After cloning, skip to [Start the dev server](#install--run).
+
+#### Option B: Download as a ZIP
+If you are not ready to install Git, download the source archive directly:
+
+1. Visit the repository page in your browser.
+2. Click **Code ▾ → Download ZIP**.
+3. Extract the archive, open a terminal inside the extracted folder, and run `npm install` followed by `npm run dev`.
+4. (Optional) When you later install Git, you can turn this folder into a repository with `git init`, `git remote add origin <repo-url>`, and `git fetch` to start tracking upstream updates.
 
 ### 2. Existing clone without a remote
 If `git remote -v` prints nothing, register the upstream remote once and then fetch the latest commits:
