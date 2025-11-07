@@ -32,3 +32,9 @@ export async function gcsWriteRows(cfg: GcsCfg, rows: Row[]): Promise<void> {
   const csv = stringify(rows, { header: true, columns: cols });
   await bucket(cfg).file(cfg.key).save(csv, { contentType: "text/csv" });
 }
+
+export async function gcsQuickCheck(cfg: Partial<GcsCfg>) {
+  if (!cfg?.bucket) throw new Error("Bucket is required");
+  if (!cfg?.key) throw new Error("Object path is required");
+  return { ok: true as const };
+}

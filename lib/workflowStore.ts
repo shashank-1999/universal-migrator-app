@@ -7,7 +7,7 @@ import type { Edge, Node } from "reactflow";
 export type NodeKind = "source" | "destination";
 export type DBType =
   | "csv" | "excel"
-  | "postgres" | "mysql" | "mssql"
+  | "postgres" | "mysql" | "mssql" | "oracle"
   | "s3" | "gcs" | "azureBlob";
 
 export type NodeData = {

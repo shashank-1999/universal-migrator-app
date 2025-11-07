@@ -34,3 +34,10 @@ export async function s3WriteRows(cfg: S3Cfg, rows: Row[]): Promise<void> {
   const csv = stringify(rows, { header: true, columns: cols });
   await client(cfg).send(new PutObjectCommand({ Bucket: cfg.bucket, Key: cfg.key, Body: csv, ContentType: "text/csv" }));
 }
+
+export async function s3QuickCheck(cfg: Partial<S3Cfg>) {
+  if (!cfg?.region) throw new Error("Region is required");
+  if (!cfg?.bucket) throw new Error("Bucket is required");
+  if (!cfg?.key) throw new Error("Key is required");
+  return { ok: true as const };
+}

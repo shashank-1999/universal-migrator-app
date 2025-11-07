@@ -8,6 +8,7 @@ export type OracleCfg = {
   password: string;
   schema?: string;        // optional, used for schema discovery and unqualified table names
   table?: string;         // when used as source/destination table
+  query?: string;
 };
 
 function toConnectString(cfg: OracleCfg) {
@@ -46,6 +47,10 @@ export async function oracleGetColumns(cfg: OracleCfg, table?: string) {
     }
   }
 
+  if (!tname) {
+    throw new Error("Oracle schema discovery requires 'table'");
+  }
+
   const conn = await oracledb.getConnection({
     user: cfg.user,
     password: cfg.password,
@@ -76,13 +81,24 @@ export type Row = Record<string, any>;
 
 /** Reads rows from a table as source (simple SELECT *). */
 export async function oracleReadRows(cfg: OracleCfg): Promise<Row[]> {
-  if (!cfg.table) throw new Error("Oracle source requires 'table'");
   const conn = await oracledb.getConnection({
     user: cfg.user,
     password: cfg.password,
     connectString: toConnectString(cfg),
   });
   try {
+    const rawQuery = (cfg.query || "").trim();
+    if (rawQuery) {
+      const lowered = rawQuery.toLowerCase();
+      if (!lowered.startsWith("select") && !lowered.startsWith("with")) {
+        throw new Error("Oracle query must start with SELECT or WITH");
+      }
+      const res = await conn.execute(rawQuery, [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      return (res.rows || []) as Row[];
+    }
+
+    if (!cfg.table) throw new Error("Oracle source requires a table or query");
+
     const sql = `SELECT * FROM ${cfg.table}`;
     const res = await conn.execute(sql, [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return (res.rows || []) as Row[];

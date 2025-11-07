@@ -13,6 +13,7 @@ import ReactFlow, {
   Connection,
   Edge,
   Node,
+  ConnectionMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -32,10 +33,16 @@ type DBType =
   | "gcs"
   | "azureBlob";
 
-const DB_OPTIONS: Record<
-  DBType,
-  { label: string; fields: { key: string; label: string; type?: string; placeholder?: string }[] }
-> = {
+type FieldConfig = {
+  key: string;
+  label: string;
+  type?: string;
+  placeholder?: string;
+  multiline?: boolean;
+  helper?: string;
+};
+
+const DB_OPTIONS: Record<DBType, { label: string; fields: FieldConfig[] }> = {
   csv: {
     label: "CSV",
     fields: [{ key: "path", label: "Path", placeholder: "./data/input.csv" }],
@@ -56,19 +63,43 @@ const DB_OPTIONS: Record<
       { key: "password", label: "Password", type: "password" },
       { key: "database", label: "Database" },
       { key: "schema", label: "Schema", placeholder: "public" },
-      { key: "table", label: "Table", placeholder: "people" },
+      {
+        key: "table",
+        label: "Table",
+        placeholder: "people",
+        helper: "Used in Table mode; leave blank when running a query.",
+      },
+      {
+        key: "query",
+        label: "Query (optional)",
+        placeholder: "SELECT * FROM public.people WHERE ...",
+        multiline: true,
+        helper: "Provide either a table or a SELECT/WITH query.",
+      },
     ],
   },
-    oracle: {
+  oracle: {
     label: "Oracle",
     fields: [
-      { key: "host",     label: "Host",        placeholder: "localhost" },
-      { key: "port",     label: "Port",        placeholder: "1521" },
-      { key: "service",  label: "Service Name",placeholder: "XEPDB1" },
-      { key: "user",     label: "User" },
+      { key: "host", label: "Host", placeholder: "localhost" },
+      { key: "port", label: "Port", placeholder: "1521" },
+      { key: "service", label: "Service Name", placeholder: "XEPDB1" },
+      { key: "user", label: "User" },
       { key: "password", label: "Password", type: "password" },
-      { key: "schema",   label: "Schema (optional)" },
-      { key: "table",    label: "Table", placeholder: "SCHEMA.TABLE or TABLE" },
+      { key: "schema", label: "Schema (optional)" },
+      {
+        key: "table",
+        label: "Table",
+        placeholder: "SCHEMA.TABLE or TABLE",
+        helper: "Used in Table mode; leave blank when running a query.",
+      },
+      {
+        key: "query",
+        label: "Query (optional)",
+        placeholder: "SELECT * FROM people WHERE ...",
+        multiline: true,
+        helper: "Provide either a table or a SELECT/WITH query.",
+      },
     ],
   },
 
@@ -80,7 +111,19 @@ const DB_OPTIONS: Record<
       { key: "user", label: "User" },
       { key: "password", label: "Password", type: "password" },
       { key: "database", label: "Database" },
-      { key: "table", label: "Table", placeholder: "my_table" },
+      {
+        key: "table",
+        label: "Table",
+        placeholder: "my_table",
+        helper: "Used in Table mode; leave blank when running a query.",
+      },
+      {
+        key: "query",
+        label: "Query (optional)",
+        placeholder: "SELECT * FROM my_table WHERE ...",
+        multiline: true,
+        helper: "Provide either a table or a SELECT/WITH query.",
+      },
     ],
   },
   mssql: {
@@ -92,7 +135,19 @@ const DB_OPTIONS: Record<
       { key: "password", label: "Password", type: "password" },
       { key: "database", label: "Database" },
       { key: "schema", label: "Schema", placeholder: "dbo" },
-      { key: "table", label: "Table", placeholder: "MyTable" },
+      {
+        key: "table",
+        label: "Table",
+        placeholder: "MyTable",
+        helper: "Used in Table mode; leave blank when running a query.",
+      },
+      {
+        key: "query",
+        label: "Query (optional)",
+        placeholder: "SELECT * FROM dbo.MyTable WHERE ...",
+        multiline: true,
+        helper: "Provide either a table or a SELECT/WITH query.",
+      },
     ],
   },
   s3: {
@@ -126,8 +181,16 @@ const DB_OPTIONS: Record<
   },
 };
 
-const defaultConfigFor = (dbType?: DBType): Record<string, any> =>
-  !dbType ? {} : Object.fromEntries(DB_OPTIONS[dbType].fields.map((f) => [f.key, ""]));
+const SQL_TYPES: DBType[] = ["postgres", "mysql", "mssql", "oracle"];
+
+const defaultConfigFor = (dbType?: DBType): Record<string, any> => {
+  if (!dbType) return {};
+  const base = Object.fromEntries(DB_OPTIONS[dbType].fields.map((f) => [f.key, ""]));
+  if (SQL_TYPES.includes(dbType)) {
+    return { ...base, readMode: "table" };
+  }
+  return base;
+};
 
 /* ───────────────────────────── Small UI bits ─────────────────────────────── */
 
@@ -213,6 +276,25 @@ const SourceNode = ({ data }: { data: NodeData }) => (
                   {String(v)}
                 </div>
               ))}
+            {typeof data.config?.query === "string" && data.config.query.trim() ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  lineHeight: 1.35,
+                  maxHeight: 80,
+                  overflow: "hidden",
+                }}
+              >
+                {(data.config.query as string).trim().slice(0, 160)}
+                {(data.config.query as string).trim().length > 160 ? "…" : ""}
+              </div>
+            ) : null}
           </>
         ) : (
           <div style={{ color: "#9ca3af" }}>Select a DB on the right →</div>
@@ -333,6 +415,15 @@ function Inspector({
 
   const d = node.data;
   const fields = d.dbType ? DB_OPTIONS[d.dbType].fields : [];
+  const isSource = d.kind === "source";
+  const isSqlSource = isSource && SQL_TYPES.includes((d.dbType || "") as DBType);
+  const existingQuery =
+    typeof d.config?.query === "string" && d.config.query.trim().length > 0 ? d.config.query : "";
+  const readMode = isSqlSource
+    ? (d.config?.readMode === "query" || (!d.config?.readMode && existingQuery)
+        ? "query"
+        : "table")
+    : null;
 
   const input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
     <input
@@ -469,24 +560,82 @@ function Inspector({
             </div>
           )}
 
+          {isSqlSource ? (
+            <div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Source mode</div>
+              <select
+                value={readMode || "table"}
+                onChange={(e) => {
+                  const mode = e.target.value === "query" ? "query" : "table";
+                  const nextConfig = { ...d.config, readMode: mode } as Record<string, any>;
+                  if (mode === "query") {
+                    nextConfig.table = "";
+                  } else {
+                    nextConfig.query = "";
+                  }
+                  updateNode({ config: nextConfig });
+                }}
+                style={{
+                  width: "100%",
+                  padding: "6px 8px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 6,
+                }}
+              >
+                <option value="table">Table</option>
+                <option value="query">Query</option>
+              </select>
+            </div>
+          ) : null}
+
           {/* Dynamic fields */}
           {fields.map((f) => {
+            if (f.key === "query" && !isSource) return null;
+            if (isSqlSource && f.key === "query" && readMode !== "query") return null;
+            if (isSqlSource && f.key === "table" && readMode === "query") return null;
             const val = (d.config ?? {})[f.key] ?? "";
             return (
               <div key={f.key}>
                 <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
                   {f.label}
                 </div>
-                {input({
-                  type: f.type === "password" ? "password" : "text",
-                  placeholder: f.placeholder,
-                  value: val,
-                  onChange: (e) =>
-                    updateNode({ config: { ...d.config, [f.key]: e.target.value } }),
-                })}
+                {f.multiline ? (
+                  <textarea
+                    placeholder={f.placeholder}
+                    value={val}
+                    rows={5}
+                    style={{
+                      width: "100%",
+                      padding: "6px 8px",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 6,
+                      fontFamily: "monospace",
+                    }}
+                    onChange={(e) =>
+                      updateNode({ config: { ...d.config, [f.key]: e.target.value } })
+                    }
+                  />
+                ) : (
+                  input({
+                    type: f.type === "password" ? "password" : "text",
+                    placeholder: f.placeholder,
+                    value: val,
+                    onChange: (e) =>
+                      updateNode({ config: { ...d.config, [f.key]: e.target.value } }),
+                  })
+                )}
+                {f.helper && (!f.multiline || isSource) ? (
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{f.helper}</div>
+                ) : null}
               </div>
             );
           })}
+
+          {isSqlSource ? (
+            <div style={{ fontSize: 11, color: "#6b7280" }}>
+              Query mode accepts SELECT/WITH statements. Table mode reads the whole table.
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -805,7 +954,7 @@ function EditorInner() {
             connectOnClick
             panOnDrag={[2]}
             selectionOnDrag={false}
-            connectionMode="loose"
+            connectionMode={ConnectionMode.Loose}
           >
             <Controls position="bottom-left" />
             <Background gap={16} size={1} />

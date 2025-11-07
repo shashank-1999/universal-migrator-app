@@ -8,7 +8,8 @@ export type MyCfg = {
   user: string;
   password: string;
   database: string;
-  table: string;
+  table?: string;
+  query?: string;
 };
 
 function open(cfg: MyCfg) {
@@ -33,6 +34,9 @@ export async function mysqlTestConnection(cfg: MyCfg): Promise<void> {
 export async function mysqlSchema(cfg: MyCfg): Promise<SchemaColumn[]> {
   const conn = await open(cfg);
   try {
+    if (!cfg.table) {
+      throw new Error("MySQL schema discovery requires 'table'");
+    }
     const sql = `
       SELECT COLUMN_NAME AS name, DATA_TYPE AS type
       FROM INFORMATION_SCHEMA.COLUMNS
@@ -52,6 +56,20 @@ export async function mysqlSchema(cfg: MyCfg): Promise<SchemaColumn[]> {
 export async function mysqlReadRows(cfg: MyCfg): Promise<Row[]> {
   const conn = await open(cfg);
   try {
+    const rawQuery = (cfg.query || "").trim();
+    if (rawQuery) {
+      const lowered = rawQuery.toLowerCase();
+      if (!lowered.startsWith("select") && !lowered.startsWith("with")) {
+        throw new Error("MySQL query must start with SELECT or WITH");
+      }
+      const [rows] = await conn.query(rawQuery);
+      return rows as Row[];
+    }
+
+    if (!cfg.table) {
+      throw new Error("MySQL source requires a table or query");
+    }
+
     const sql = `SELECT * FROM \`${cfg.database}\`.\`${cfg.table}\``;
     const [rows] = await conn.query(sql);
     return rows as Row[];
@@ -62,6 +80,9 @@ export async function mysqlReadRows(cfg: MyCfg): Promise<Row[]> {
 
 export async function mysqlWriteRows(cfg: MyCfg, rows: Row[]): Promise<void> {
   if (!rows?.length) return;
+  if (!cfg.table) {
+    throw new Error("MySQL destination requires 'table'");
+  }
   const conn = await open(cfg);
   try {
     const cols = Object.keys(rows[0]);

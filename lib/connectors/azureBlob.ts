@@ -57,3 +57,12 @@ export async function azWriteRows(cfg: AzCfg, rows: Row[]): Promise<void> {
   const bc = cc.getBlockBlobClient(cfg.blob);
   await bc.upload(csv, Buffer.byteLength(csv), { blobHTTPHeaders: { blobContentType: "text/csv" } });
 }
+
+export async function azureBlobQuickCheck(cfg: Partial<AzCfg>) {
+  if (!cfg?.container) throw new Error("Container is required");
+  if (!cfg?.blob) throw new Error("Blob path is required");
+  if (!cfg?.connectionString && (!cfg?.accountName || !cfg?.accountKey)) {
+    throw new Error("Provide either a connection string or account name/key");
+  }
+  return { ok: true as const };
+}
