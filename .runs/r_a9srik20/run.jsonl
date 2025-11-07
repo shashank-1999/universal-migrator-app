@@ -1,0 +1,3 @@
+{"ts":"2025-11-01T09:51:35.099Z","runId":"r_a9srik20","ev":"RUN_START"}
+{"ts":"2025-11-01T09:51:35.100Z","runId":"r_a9srik20","ev":"SPEC","spec":{"version":1,"source":{"kind":"source","label":"Source","dbType":"csv","config":{"path":""}},"destination":{"kind":"destination","label":"Destination","dbType":"postgres","config":{"host":"","port":"","user":"","password":"****","database":"","schema":"","table":""}},"mapping":[]}}
+{"ts":"2025-11-01T09:51:35.102Z","runId":"r_a9srik20","ev":"ERROR","message":"Source undefined not implemented"}

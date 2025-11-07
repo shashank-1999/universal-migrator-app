@@ -1,0 +1,22 @@
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+.cache/
+npm-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp

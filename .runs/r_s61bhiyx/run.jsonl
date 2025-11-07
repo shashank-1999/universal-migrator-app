@@ -1,0 +1,3 @@
+{"ts":"2025-11-01T09:52:25.790Z","runId":"r_s61bhiyx","ev":"RUN_START"}
+{"ts":"2025-11-01T09:52:25.791Z","runId":"r_s61bhiyx","ev":"SPEC","spec":{"version":1,"source":{"kind":"source","label":"Source","dbType":"csv","config":{"path":"./data/input.csv"}},"destination":{"kind":"destination","label":"Destination","dbType":"csv","config":{"path":"output.xlsx"}},"mapping":[{"from":"id","to":"id","cast":"STRING"},{"from":"name","to":"name","cast":"STRING"},{"from":"city","to":"city","cast":"STRING"}]}}
+{"ts":"2025-11-01T09:52:25.792Z","runId":"r_s61bhiyx","ev":"ERROR","message":"Source undefined not implemented"}
