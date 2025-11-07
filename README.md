@@ -65,6 +65,19 @@ If you maintain your own feature branch, rebase or merge from `origin/work` so y
 
 > **Tip:** If you have local edits that conflict with the update, use `git stash` (before pulling) and `git stash pop` (after the pull) to reapply your work.
 
+### 4. Keep a fork in sync with the upstream project
+If your GitHub account hosts a fork that still shows only the initial commit, add the original project as an `upstream` remote in your local clone, fetch the newer commits (including the query box work), and then push them back to your fork:
+
+```bash
+git remote add upstream <upstream-repo-url>   # only run once
+git fetch upstream
+git checkout main
+git merge upstream/main                      # or: git rebase upstream/main
+git push origin main
+```
+
+After the push, refresh your GitHub fork—the history will now include the latest query-enabled UI changes.
+
 ## Quick test: CSV → CSV
 - Go to **Workflow**
 - Source: CSV, path `./data/input.csv`
