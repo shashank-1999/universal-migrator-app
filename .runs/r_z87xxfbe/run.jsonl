@@ -1,0 +1,3 @@
+{"ts":"2025-11-03T06:58:23.093Z","runId":"r_z87xxfbe","ev":"RUN_START"}
+{"ts":"2025-11-03T06:58:23.096Z","runId":"r_z87xxfbe","ev":"SPEC","spec":{"version":1,"source":{"kind":"source","label":"Source","config":{}},"destination":{"kind":"destination","label":"Destination","config":{}},"mapping":[]}}
+{"ts":"2025-11-03T06:58:23.099Z","runId":"r_z87xxfbe","ev":"ERROR","message":"Source undefined not implemented"}
