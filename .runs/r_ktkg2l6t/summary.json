@@ -1,0 +1,9 @@
+{
+  "runId": "r_ktkg2l6t",
+  "status": "running",
+  "startedAt": "2025-11-17T11:35:15.523Z",
+  "sourceType": "csv",
+  "destinationType": "postgres",
+  "sourceTableName": "C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763379004013_6daeb96c123f_products-2000000.csv",
+  "destinationTableName": "Testdata"
+}

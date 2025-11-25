@@ -1,0 +1,9 @@
+{
+  "runId": "r_2dwkelxr",
+  "status": "running",
+  "startedAt": "2025-11-19T09:39:46.156Z",
+  "sourceType": "postgres",
+  "destinationType": "mssql",
+  "sourceTableName": "testing_ckyc",
+  "destinationTableName": "testing_ckyc"
+}

@@ -2,6 +2,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { Row, SchemaColumn } from "../types";
+import { normalizeUserPath } from "../pathUtils";
 
 /* -------------------- small CSV helpers -------------------- */
 
@@ -62,7 +63,8 @@ function stringifyCsv(rows: string[][]): string {
 /* ----------- path utilities (Windows friendly) ------------- */
 
 async function ensureDirAndResolve(userPath: string): Promise<string> {
-  const normalized = userPath.replace(/\\/g, "/");
+  const cleaned = normalizeUserPath(userPath);
+  const normalized = cleaned.replace(/\\/g, "/");
   const outPath = path.isAbsolute(normalized)
     ? normalized
     : path.join(process.cwd(), normalized.replace(/^[.\\/]+/, ""));
@@ -71,7 +73,8 @@ async function ensureDirAndResolve(userPath: string): Promise<string> {
 }
 
 async function resolveOnly(userPath: string): Promise<string> {
-  const normalized = userPath.replace(/\\/g, "/");
+  const cleaned = normalizeUserPath(userPath);
+  const normalized = cleaned.replace(/\\/g, "/");
   return path.isAbsolute(normalized)
     ? normalized
     : path.join(process.cwd(), normalized.replace(/^[.\\/]+/, ""));
@@ -108,7 +111,15 @@ export async function csvSchema(cfg: { path: string }): Promise<SchemaColumn[]> 
 
 export async function csvReadRows(cfg: { path: string }): Promise<Row[]> {
   const p = await resolveOnly(cfg.path);
-  const txt = await fs.readFile(p, "utf8");
+  let txt: string;
+  try {
+    txt = await fs.readFile(p, "utf8");
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      throw new Error(`CSV read failed: file not found at ${cfg.path}`);
+    }
+    throw err;
+  }
   const rows = parseCsv(txt);
   if (!rows.length) return [];
   const header = rows[0];
@@ -120,8 +131,11 @@ export async function csvReadRows(cfg: { path: string }): Promise<Row[]> {
   });
 }
 
-export async function csvWriteRows(cfg: { path: string }, rows: Row[]): Promise<void> {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function csvWriteRows(cfg: { path: string }, rows: Row[], options?: WriteOptions): Promise<void> {
   const outPath = await ensureDirAndResolve(cfg.path);
+  if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
 
   if (!rows?.length) {
     // create/clear file so users see something
@@ -130,6 +144,10 @@ export async function csvWriteRows(cfg: { path: string }, rows: Row[]): Promise<
   }
 
   const header = Object.keys(rows[0]);
-  const data: string[][] = [header, ...rows.map((r) => header.map((h) => r[h]))];
+  const data: string[][] = [header];
+  for (const row of rows) {
+    if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+    data.push(header.map((h) => row[h]));
+  }
   await fs.writeFile(outPath, stringifyCsv(data), "utf8");
 }

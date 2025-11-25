@@ -1,0 +1,15 @@
+{
+  "runId": "r_iehcm68r",
+  "status": "success",
+  "startedAt": "2025-11-17T07:10:41.454Z",
+  "sourceType": "csv",
+  "destinationType": "postgres",
+  "sourceTableName": "C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763363333647_0e821f25e172_products-2000000.csv",
+  "destinationTableName": "Testdata",
+  "endedAt": "2025-11-17T07:20:21.177Z",
+  "durationMs": 579723,
+  "rowsRead": 2000000,
+  "rowsWritten": 2000000,
+  "rowsMoved": 2000000,
+  "message": "Run complete: 2000000 rows moved csv → postgres"
+}

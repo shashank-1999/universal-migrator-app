@@ -22,6 +22,10 @@ function open(cfg: MyCfg) {
 }
 
 export async function mysqlTestConnection(cfg: MyCfg): Promise<void> {
+  // Validate required fields
+  if (!cfg.host || !cfg.user || !cfg.password || !cfg.database) {
+    throw new Error("MySQL requires: host, user, password, database");
+  }
   const conn = await open(cfg);
   try {
     await conn.query("SELECT 1");
@@ -49,28 +53,63 @@ export async function mysqlSchema(cfg: MyCfg): Promise<SchemaColumn[]> {
   }
 }
 
-export async function mysqlReadRows(cfg: MyCfg): Promise<Row[]> {
+export async function mysqlReadRows(cfg: MyCfg & { query?: string }): Promise<Row[]> {
   const conn = await open(cfg);
   try {
-    const sql = `SELECT * FROM \`${cfg.database}\`.\`${cfg.table}\``;
-    const [rows] = await conn.query(sql);
-    return rows as Row[];
+    if (cfg.query?.trim()) {
+      // Use custom query if provided
+      const [rows] = await conn.query(cfg.query);
+      return rows as Row[];
+    } else {
+      // Fall back to selecting all from table
+      const sql = `SELECT * FROM \`${cfg.database}\`.\`${cfg.table}\``;
+      const [rows] = await conn.query(sql);
+      return rows as Row[];
+    }
   } finally {
     await conn.end();
   }
 }
 
-export async function mysqlWriteRows(cfg: MyCfg, rows: Row[]): Promise<void> {
+export async function mysqlCreateTable(cfg: MyCfg, createTableSQL: string): Promise<void> {
+  const conn = await open(cfg);
+  try {
+    await conn.query(createTableSQL);
+  } finally {
+    await conn.end();
+  }
+}
+
+export async function mysqlTruncateTable(cfg: MyCfg): Promise<void> {
+  const conn = await open(cfg);
+  try {
+    const sql = `TRUNCATE TABLE \`${cfg.database}\`.\`${cfg.table}\``;
+    await conn.query(sql);
+  } finally {
+    await conn.end();
+  }
+}
+
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function mysqlWriteRows(cfg: MyCfg & { createTable?: boolean }, rows: Row[], options?: WriteOptions): Promise<void> {
   if (!rows?.length) return;
   const conn = await open(cfg);
   try {
     const cols = Object.keys(rows[0]);
-    const placeholders = `(${cols.map(() => "?").join(",")})`;
-    const sql = `INSERT INTO \`${cfg.database}\`.\`${cfg.table}\` (${cols
-      .map((c) => `\`${c}\``)
-      .join(",")}) VALUES ${rows.map(() => placeholders).join(",")}`;
-    const args = rows.flatMap((r) => cols.map((c) => (r as any)[c]));
-    await conn.query(sql, args);
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+      const chunk = rows.slice(i, i + chunkSize);
+      const placeholders = chunk
+        .map(() => `(${cols.map(() => "?").join(",")})`)
+        .join(",");
+      const sql = `INSERT INTO \`${cfg.database}\`.\`${cfg.table}\` (${cols
+        .map((c) => `\`${c}\``)
+        .join(",")}) VALUES ${placeholders}`;
+      const args = chunk.flatMap((r) => cols.map((c) => (r as any)[c]));
+      await conn.query(sql, args);
+    }
   } finally {
     await conn.end();
   }

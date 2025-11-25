@@ -1,0 +1,5 @@
+{"ts":"2025-11-18T09:09:25.328Z","runId":"run_mi4cq3t7_slnj","ev":"RUN_START"}
+{"ts":"2025-11-18T09:09:25.338Z","runId":"run_mi4cq3t7_slnj","ev":"SPEC","spec":{"version":1,"source":{"dbType":"csv","config":{"path":"C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763456914475_df1f662bc030_products-2000000.csv","uploadedPath":"C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763456914475_df1f662bc030_products-2000000.csv","uploadedName":"products-2000000.csv"}},"destination":{"dbType":"mssql","config":{"host":"LAPTOP-SO818TTE","port":"1433","user":"testuser","password":"****","database":"testing","schema":"","table":"Testing_ckyc","query":"","createTable":true}},"mapping":[],"runId":"run_mi4cq3t7_slnj"}}
+{"ts":"2025-11-18T09:09:58.400Z","runId":"run_mi4cq3t7_slnj","ev":"READ_COMPLETE","rows":2000000}
+{"ts":"2025-11-18T09:09:58.404Z","runId":"run_mi4cq3t7_slnj","ev":"CREATE_TABLE","destination":"mssql"}
+{"ts":"2025-11-18T09:10:18.668Z","runId":"run_mi4cq3t7_slnj","ev":"TRUNCATE_DESTINATION","destination":"mssql"}

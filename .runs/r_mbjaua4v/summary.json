@@ -1,0 +1,17 @@
+{
+  "runId": "r_mbjaua4v",
+  "status": "success",
+  "startedAt": "2025-11-20T12:28:10.730Z",
+  "sourceType": "postgres",
+  "destinationType": "mssql",
+  "sourceTableName": "testing_ckyc",
+  "destinationTableName": "testing_ckyc",
+  "loadMode": "full",
+  "scheduleId": "9dac2a7d-c868-448e-9d9a-42a8f518897f",
+  "endedAt": "2025-11-20T13:19:49.359Z",
+  "durationMs": 3098629,
+  "rowsRead": 419832,
+  "rowsWritten": 419832,
+  "rowsMoved": 419832,
+  "message": "Run complete: 419832 rows moved postgres → mssql"
+}

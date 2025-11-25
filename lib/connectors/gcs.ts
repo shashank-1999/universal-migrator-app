@@ -27,8 +27,17 @@ export async function gcsReadRows(cfg: GcsCfg): Promise<Row[]> {
   return parse(csv, { columns: true, skip_empty_lines: true });
 }
 
-export async function gcsWriteRows(cfg: GcsCfg, rows: Row[]): Promise<void> {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function gcsWriteRows(cfg: GcsCfg, rows: Row[], options?: WriteOptions): Promise<void> {
+  if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
   const cols = rows.length ? Object.keys(rows[0]) : [];
   const csv = stringify(rows, { header: true, columns: cols });
   await bucket(cfg).file(cfg.key).save(csv, { contentType: "text/csv" });
+}
+
+export async function gcsQuickCheck(cfg: GcsCfg): Promise<void> {
+  // Just try to check if bucket exists and is accessible
+  const b = bucket(cfg);
+  await b.exists();
 }

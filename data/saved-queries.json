@@ -1,0 +1,23 @@
+[
+  {
+    "name": "sdsd",
+    "query": "hegdeh",
+    "dbType": "mssql",
+    "id": "1763028738535",
+    "createdAt": "2025-11-13T10:12:18.535Z"
+  },
+  {
+    "name": "acs",
+    "query": "select * from people",
+    "dbType": "mysql",
+    "id": "1762925645987",
+    "createdAt": "2025-11-12T05:34:05.987Z"
+  },
+  {
+    "name": "table 2",
+    "query": "select * \nfrom table1",
+    "dbType": "mysql",
+    "id": "1762859298979",
+    "createdAt": "2025-11-11T11:08:18.979Z"
+  }
+]

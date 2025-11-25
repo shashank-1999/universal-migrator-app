@@ -1,0 +1,4 @@
+{"ts":"2025-11-20T06:10:37.854Z","runId":"r_gs8ufrf2","ev":"RUN_START"}
+{"ts":"2025-11-20T06:10:37.859Z","runId":"r_gs8ufrf2","ev":"SPEC","spec":{"version":1,"source":{"dbType":"postgres","config":{"host":"127.0.0.1","port":"5432","user":"postgres","password":"****","database":"School","schema":"","table":"testing_ckyc","query":""}},"destination":{"dbType":"mssql","config":{"host":"LAPTOP-SO818TTE","port":"1433","user":"testuser","password":"****","database":"testing","schema":"","table":"testing_ckyc","query":""}},"mapping":[]}}
+{"ts":"2025-11-20T06:10:39.456Z","runId":"r_gs8ufrf2","ev":"READ_COMPLETE","rows":419832}
+{"ts":"2025-11-20T06:10:39.458Z","runId":"r_gs8ufrf2","ev":"TRUNCATE_DESTINATION","destination":"mssql"}

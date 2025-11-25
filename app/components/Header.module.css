@@ -1,0 +1,48 @@
+.shell {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(79, 70, 229, 0.08);
+  padding: 16px 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  color: #1f2937;
+  letter-spacing: 0.01em;
+  font-size: 18px;
+}
+
+.nav {
+  display: flex;
+  gap: 20px;
+}
+
+.link {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  padding: 8px 12px;
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.link:hover {
+  color: #111827;
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.active {
+  color: #fff;
+  background: #4f46e5;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.35);
+}

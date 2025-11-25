@@ -29,8 +29,17 @@ export async function s3ReadRows(cfg: S3Cfg): Promise<Row[]> {
   return parse(csv, { columns: true, skip_empty_lines: true });
 }
 
-export async function s3WriteRows(cfg: S3Cfg, rows: Row[]): Promise<void> {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function s3WriteRows(cfg: S3Cfg, rows: Row[], options?: WriteOptions): Promise<void> {
+  if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
   const cols = rows.length ? Object.keys(rows[0]) : [];
   const csv = stringify(rows, { header: true, columns: cols });
   await client(cfg).send(new PutObjectCommand({ Bucket: cfg.bucket, Key: cfg.key, Body: csv, ContentType: "text/csv" }));
+}
+
+export async function s3QuickCheck(cfg: S3Cfg): Promise<void> {
+  // Just try to list objects in the bucket to verify credentials and bucket access
+  const { ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+  await client(cfg).send(new ListObjectsV2Command({ Bucket: cfg.bucket, MaxKeys: 1 }));
 }

@@ -1,0 +1,9 @@
+{
+  "runId": "run_mi4ef86r_9zi4",
+  "status": "running",
+  "startedAt": "2025-11-18T09:56:55.917Z",
+  "sourceType": "csv",
+  "destinationType": "mssql",
+  "sourceTableName": "C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763456914475_df1f662bc030_products-2000000.csv",
+  "destinationTableName": "Testing_ckyc"
+}

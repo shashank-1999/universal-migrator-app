@@ -1,0 +1,362 @@
+.container {
+  padding: 24px;
+}
+
+.header {
+  background: linear-gradient(135deg, #0066cc, #004488);
+  padding: 32px 24px;
+  margin-bottom: 24px;
+  border-radius: 8px;
+  color: white;
+}
+
+.headerTitle {
+  font-size: 32px;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.headerSubtitle {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.gridContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.cardHeader {
+  border-bottom: 1px solid #eee;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: #666;
+}
+
+.cardContent {
+  padding: 20px;
+}
+
+.formContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.button {
+  width: 100%;
+  height: 42px;
+  background: linear-gradient(135deg, #0066cc, #004488);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-top: 8px;
+}
+
+.button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.queryTextarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-family: monospace;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 200px;
+}
+
+.error {
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.errorIcon {
+  width: 20px;
+  height: 20px;
+  color: #e53e3e;
+  flex-shrink: 0;
+}
+
+.errorMessage {
+  font-size: 14px;
+  color: #e53e3e;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tableHeader {
+  background: #f8f9fa;
+}
+
+.tableHeaderCell {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  border-bottom: 2px solid #eee;
+}
+
+.tableRow {
+  transition: background-color 0.2s;
+}
+
+.tableRow:nth-child(even) {
+  background: #f8f9fa;
+}
+
+.tableCell {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #666;
+  border-bottom: 1px solid #eee;
+}
+
+.queryControls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.saveQueryForm {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.savedQueryItem {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.savedQueryItem:hover {
+  background-color: #f8f9fa;
+}
+
+.savedQueryContent {
+  flex: 1;
+  padding-right: 12px;
+}
+
+.savedQueryItem:last-child {
+  border-bottom: none;
+}
+
+.savedQueryName {
+  font-weight: 500;
+  color: #1a365d;
+  margin-bottom: 4px;
+}
+
+.savedQueryInfo {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.resultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.exportButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #0066cc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.exportButton:hover {
+  background: #0055aa;
+}
+
+.resultsCard {
+  grid-column: 1 / -1;
+}
+
+.resultsTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 520px;
+  padding-bottom: 8px;
+}
+
+.truncatedNotice {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 4px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.scrollHint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.success {
+  background: #f0fff4;
+  border-color: #9ae6b4;
+}
+
+.success .errorIcon {
+  color: #38a169;
+}
+
+.success .errorMessage {
+  color: #38a169;
+}
+
+.saveDialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.saveDialogContent {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.saveDialogTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.saveDialogButtons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.saveButton {
+  flex: 1;
+  padding: 8px 16px;
+  background: #0066cc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.saveButton:hover {
+  background: #0055aa;
+}
+
+.cancelButton {
+  flex: 1;
+  padding: 8px 16px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cancelButton:hover {
+  background: #e2e8f0;
+}
+
+.deleteButton {
+  padding: 4px 8px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.deleteButton:hover {
+  background: #dc2626;
+}
+
+.loadingSpinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

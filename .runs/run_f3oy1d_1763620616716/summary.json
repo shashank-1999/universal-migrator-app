@@ -1,0 +1,12 @@
+{
+  "runId": "run_f3oy1d_1763620616716",
+  "status": "error",
+  "startedAt": "2025-11-20T06:36:57.801Z",
+  "sourceType": "postgres",
+  "destinationType": "mssql",
+  "sourceTableName": "testing_ckyc",
+  "destinationTableName": "testing_ckyc",
+  "endedAt": "2025-11-20T06:38:21.884Z",
+  "durationMs": 84083,
+  "error": "Run cancelled by user"
+}

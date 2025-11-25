@@ -27,6 +27,10 @@ function toPoolConfig(c: MsCfg): sql.config {
 }
 
 export async function mssqlTestConnection(cfg: MsCfg): Promise<void> {
+  // Validate required fields
+  if (!cfg.host || !cfg.user || !cfg.password || !cfg.database) {
+    throw new Error("SQL Server requires: host, user, password, database");
+  }
   const pool = new sql.ConnectionPool(toPoolConfig(cfg));
   await pool.connect();
   try {
@@ -87,7 +91,19 @@ async function getIdentityColumn(pool: sql.ConnectionPool, schema: string, table
   return q.recordset.length ? (q.recordset[0].identity_col as string) : null;
 }
 
-export async function mssqlWriteRows(cfg: MsCfg, rows: Row[]): Promise<void> {
+export async function mssqlCreateTable(cfg: MsCfg, createTableSQL: string): Promise<void> {
+  const pool = new sql.ConnectionPool(toPoolConfig(cfg));
+  await pool.connect();
+  try {
+    await pool.request().query(createTableSQL);
+  } finally {
+    await pool.close();
+  }
+}
+
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function mssqlWriteRows(cfg: MsCfg, rows: Row[], options?: WriteOptions): Promise<void> {
   if (!rows.length) return;
 
   const sch = cfg.schema || "dbo";
@@ -107,21 +123,37 @@ export async function mssqlWriteRows(cfg: MsCfg, rows: Row[]): Promise<void> {
     }
 
     try {
-      // param placeholders like (@p_0_0, @p_0_1, ...)
-      const valuesExpr = rows
-        .map((_, i) => "(" + cols.map((_, j) => `@p_${i}_${j}`).join(", ") + ")")
-        .join(", ");
+      const paramsPerRow = cols.length;
+      const maxRowsPerBatch = Math.max(1, Math.floor(2000 / Math.max(1, paramsPerRow)));
+      const chunkSize = Math.min(200, maxRowsPerBatch);
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+        const chunk = rows.slice(i, i + chunkSize);
+        const valuesExpr = chunk
+          .map((_, ci) => "(" + cols.map((_, cj) => `@p_${ci}_${cj}`).join(", ") + ")")
+          .join(", ");
 
-      const req = pool.request();
-      rows.forEach((row, i) => cols.forEach((c, j) => req.input(`p_${i}_${j}`, (row as any)[c])));
-
-      const sqlText = `INSERT INTO ${tbl} (${cols.map((c) => `[${c}]`).join(", ")}) VALUES ${valuesExpr}`;
-      await req.query(sqlText);
+        const req = pool.request();
+        chunk.forEach((row, ci) => cols.forEach((c, cj) => req.input(`p_${ci}_${cj}`, (row as any)[c])));
+        const sqlText = `INSERT INTO ${tbl} (${cols.map((c) => `[${c}]`).join(", ")}) VALUES ${valuesExpr}`;
+        await req.query(sqlText);
+      }
     } finally {
       if (willSupplyIdentity) {
         await pool.request().query(`SET IDENTITY_INSERT ${tbl} OFF;`);
       }
     }
+  } finally {
+    await pool.close();
+  }
+}
+
+export async function mssqlTruncateTable(cfg: MsCfg): Promise<void> {
+  const sch = cfg.schema || "dbo";
+  const pool = new sql.ConnectionPool(toPoolConfig(cfg));
+  await pool.connect();
+  try {
+    await pool.request().query(`TRUNCATE TABLE [${sch}].[${cfg.table}]`);
   } finally {
     await pool.close();
   }

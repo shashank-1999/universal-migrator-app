@@ -17,6 +17,10 @@ function toConnectString(cfg: OracleCfg) {
 }
 
 export async function oracleTestConnection(cfg: OracleCfg) {
+  // Validate required fields
+  if (!cfg.host || !cfg.service || !cfg.user || !cfg.password) {
+    throw new Error("Oracle requires: host, service, user, password");
+  }
   const conn = await oracledb.getConnection({
     user: cfg.user,
     password: cfg.password,
@@ -92,7 +96,9 @@ export async function oracleReadRows(cfg: OracleCfg): Promise<Row[]> {
 }
 
 /** Writes rows to a table as destination (INSERT). */
-export async function oracleWriteRows(cfg: OracleCfg, rows: Row[]) {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function oracleWriteRows(cfg: OracleCfg, rows: Row[], options?: WriteOptions) {
   if (!cfg.table) throw new Error("Oracle destination requires 'table'");
   if (!rows.length) return;
 
@@ -109,8 +115,28 @@ export async function oracleWriteRows(cfg: OracleCfg, rows: Row[]) {
   });
 
   try {
-    const binds = rows.map((r) => cols.map((c) => r[c]));
-    await conn.executeMany(sql, binds);
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+      const chunk = rows.slice(i, i + chunkSize);
+      const binds = chunk.map((r) => cols.map((c) => r[c]));
+      await conn.executeMany(sql, binds);
+      await conn.commit();
+    }
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function oracleTruncateTable(cfg: OracleCfg) {
+  if (!cfg.table) throw new Error("Oracle destination requires 'table'");
+  const conn = await oracledb.getConnection({
+    user: cfg.user,
+    password: cfg.password,
+    connectString: toConnectString(cfg),
+  });
+  try {
+    await conn.execute(`TRUNCATE TABLE ${cfg.table}`);
     await conn.commit();
   } finally {
     await conn.close();

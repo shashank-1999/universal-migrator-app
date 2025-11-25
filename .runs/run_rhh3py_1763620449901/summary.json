@@ -1,0 +1,12 @@
+{
+  "runId": "run_rhh3py_1763620449901",
+  "status": "error",
+  "startedAt": "2025-11-20T06:34:10.941Z",
+  "sourceType": "postgres",
+  "destinationType": "mssql",
+  "sourceTableName": "testing_ckyc",
+  "destinationTableName": "testing_ckyc",
+  "endedAt": "2025-11-20T06:34:35.437Z",
+  "durationMs": 24496,
+  "error": "Run cancelled by user"
+}

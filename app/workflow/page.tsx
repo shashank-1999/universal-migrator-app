@@ -13,10 +13,13 @@ import ReactFlow, {
   Connection,
   Edge,
   Node,
+  BaseEdge,
+  EdgeProps,
+  getBezierPath,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { useWorkflowStore, type NodeData } from "@/lib/workflowStore";
+import { useWorkflowStore, type NodeData, type RunState } from "@/lib/workflowStore";
 
 /* ───────────────────────────── Types / DB options ────────────────────────── */
 
@@ -31,6 +34,44 @@ type DBType =
   | "s3"
   | "gcs"
   | "azureBlob";
+
+type RunStatus = RunState;
+
+const RUN_STATUS_VISUALS: Record<
+  Exclude<RunStatus, "idle">,
+  { bg: string; color: string; dot: string; fallback: string }
+> = {
+  running: {
+    bg: "#fff7ed",
+    color: "#9a3412",
+    dot: "#ea580c",
+    fallback: "Workflow is running...",
+  },
+  cancelling: {
+    bg: "#fef2f2",
+    color: "#b45309",
+    dot: "#f97316",
+    fallback: "Requesting stop...",
+  },
+  cancelled: {
+    bg: "#f1f5f9",
+    color: "#0f172a",
+    dot: "#475569",
+    fallback: "Workflow run cancelled",
+  },
+  success: {
+    bg: "#ecfccb",
+    color: "#166534",
+    dot: "#15803d",
+    fallback: "Workflow run completed",
+  },
+  error: {
+    bg: "#fee2e2",
+    color: "#b91c1c",
+    dot: "#dc2626",
+    fallback: "Workflow run failed",
+  },
+};
 
 const DB_OPTIONS: Record<
   DBType,
@@ -290,6 +331,107 @@ const DestinationNode = ({ data }: { data: NodeData }) => (
 
 const nodeTypes = { SourceNode, DestinationNode } as const;
 
+type FlowParticle =
+  | { label: string; color: string; duration: number; icon?: never }
+  | { icon: "stack"; color: string; duration: number; label?: never };
+
+const FLOW_PARTICLES: FlowParticle[] = [
+  { label: "TX", color: "#0ea5e9", duration: 2.6 },
+  { label: "NM", color: "#f97316", duration: 3.1 },
+  { icon: "stack", color: "#1e40af", duration: 3.6 },
+  { label: "DT", color: "#10b981", duration: 4.1 },
+];
+
+const FlowEdge = ({
+  id,
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  style = {},
+  markerEnd,
+  data,
+}: EdgeProps) => {
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+
+  const showFlow = Boolean(data?.animate);
+  const stroke = (style as React.CSSProperties)?.stroke || "#4f46e5";
+
+  return (
+    <>
+      <BaseEdge
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          stroke,
+          strokeWidth: 2.5,
+          opacity: 0.95,
+        }}
+      />
+      {showFlow &&
+        FLOW_PARTICLES.map((particle, idx) => {
+          const motionProps = {
+            dur: `${particle.duration + idx * 0.25}s`,
+            repeatCount: "indefinite" as const,
+            path: edgePath,
+            begin: `${idx * 0.35}s`,
+          };
+
+          return (
+            <g key={`${id}-particle-${idx}`} style={{ pointerEvents: "none" }}>
+              {particle.icon === "stack" ? (
+                <>
+                  <g transform="scale(0.85)">
+                    <rect
+                      x={-6}
+                      y={-5}
+                      width={12}
+                      height={10}
+                      rx={2}
+                      fill="#fff"
+                      stroke={particle.color}
+                      strokeWidth={1.5}
+                    />
+                    <rect x={-4.5} y={-2.5} width={9} height={2} fill={particle.color} rx={1} />
+                    <rect x={-4.5} y={0.5} width={9} height={2} fill={particle.color} rx={1} opacity={0.85} />
+                    <rect x={-4.5} y={-5.5} width={9} height={2} fill={particle.color} rx={1} opacity={0.65} />
+                  </g>
+                  <animateMotion {...motionProps} />
+                </>
+              ) : (
+                <>
+                  <circle r={8} fill={particle.color} opacity={0.95} />
+                  <text
+                    fill="#fff"
+                    fontSize={6}
+                    fontWeight={600}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    {particle.label}
+                  </text>
+                  <animateMotion {...motionProps} />
+                </>
+              )}
+            </g>
+          );
+        })}
+    </>
+  );
+};
+
+const edgeTypes = { flowEdge: FlowEdge } as const;
+
 /* ───────────────────────────── Inspector (upload only on Source CSV/Excel) ───────────────────────── */
 
 function Inspector({
@@ -490,6 +632,36 @@ function Inspector({
         </div>
       )}
 
+      {/* Optional custom SQL query for relational sources */}
+      {d.kind === "source" &&
+        d.dbType &&
+        ["postgres", "mysql", "mssql", "oracle"].includes(d.dbType) && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Custom query (optional)</div>
+            <textarea
+              value={d.config?.customQuery ?? ""}
+              onChange={(e) =>
+                updateNode({
+                  config: { ...d.config, customQuery: e.target.value },
+                })
+              }
+              placeholder="SELECT * FROM your_table WHERE ..."
+              rows={4}
+              style={{
+                width: "100%",
+                padding: "8px",
+                border: "1px solid #e5e7eb",
+                borderRadius: 6,
+                fontFamily: "monospace",
+                resize: "vertical",
+              }}
+            />
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+              When provided, this query overrides the table selection for this source.
+            </div>
+          </div>
+        )}
+
       <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={testConnection}
@@ -507,6 +679,32 @@ function Inspector({
           <span style={{ fontSize: 12, color: "#111827" }}>{testMsg}</span>
         )}
       </div>
+
+      {/* Auto-create table toggle for DB destinations */}
+      {d.kind === "destination" &&
+        d.dbType &&
+        ["postgres", "mysql", "mssql", "oracle"].includes(d.dbType) && (
+          <label
+            style={{
+              marginTop: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 13,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!d.config?.createTable}
+              onChange={(e) =>
+                updateNode({
+                  config: { ...d.config, createTable: e.target.checked },
+                })
+              }
+            />
+            Automatically create table if it does not exist
+          </label>
+        )}
     </div>
   );
 }
@@ -553,15 +751,25 @@ function EditorInner() {
   const setEdges = useWorkflowStore((s) => s.setEdges);
   const setSelectedId = useWorkflowStore((s) => s.setSelectedId);
   const reset = useWorkflowStore((s) => s.reset);
+  const runStatus = useWorkflowStore((s) => s.runStatus);
+  const setRunStatus = useWorkflowStore((s) => s.setRunStatus);
+  const currentRunId = useWorkflowStore((s) => s.currentRunId);
+  const setCurrentRunId = useWorkflowStore((s) => s.setCurrentRunId);
 
   // Local UI state for collapsible panes
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [schemaAbortController, setSchemaAbortController] = useState<AbortController | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const selectedNode = useMemo(
     () => (selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null),
     [nodes, selectedId]
   );
+
+  const runState = runStatus.state;
+  const runMessage = runStatus.message ?? "";
+  const isFlowAnimating = runState === "running" || runState === "cancelling";
 
   const addNode = (kind: NodeKind) => {
     const id = Math.random().toString(36).slice(2, 9);
@@ -593,12 +801,17 @@ function EditorInner() {
       if (!isValidConnection(connection)) return;
       setEdges((eds) =>
         addEdge(
-          { ...connection, animated: true, style: { stroke: "#6366f1", strokeWidth: 2 } },
+          {
+            ...connection,
+            type: "flowEdge",
+            data: { animate: isFlowAnimating },
+            style: { stroke: "#6366f1", strokeWidth: 2 },
+          },
           eds
         )
       );
     },
-    [nodes, setEdges]
+    [isFlowAnimating, nodes, setEdges]
   );
 
   const onNodesChange = (changes: Parameters<typeof applyNodeChanges>[0]) => {
@@ -652,6 +865,8 @@ function EditorInner() {
 
   const clearAll = () => {
     reset(); // clears nodes/edges/selectedId + persisted copy
+    setRunStatus({ state: "idle" });
+    setCurrentRunId(null);
   };
 
   const specText = useMemo(
@@ -659,24 +874,51 @@ function EditorInner() {
     [nodes, edges]
   );
 
-  const run = async () => {
-    try {
-      const src = nodes.find((n) => n.data.kind === "source");
-      const dst = nodes.find((n) => n.data.kind === "destination");
-      if (!src || !dst) return alert("Add and connect a Source to a Destination first.");
+  const decoratedEdges = useMemo(
+    () =>
+      edges.map((edge) => ({
+        ...edge,
+        type: "flowEdge",
+        data: { ...(edge.data ?? {}), animate: isFlowAnimating },
+        style: {
+          stroke: "#6366f1",
+          strokeWidth: 2,
+          ...(edge.style ?? {}),
+        },
+      })),
+    [edges, isFlowAnimating]
+  );
 
+  const run = async () => {
+    if (runState === "running" || runState === "cancelling") return;
+
+    const src = nodes.find((n) => n.data.kind === "source");
+    const dst = nodes.find((n) => n.data.kind === "destination");
+    if (!src || !dst) return alert("Add and connect a Source to a Destination first.");
+
+    const controller = new AbortController();
+    setSchemaAbortController(controller);
+    setRunStatus({ state: "running", message: "Fetching schema information..." });
+
+    try {
       const [srcSchemaRes, dstSchemaRes] = await Promise.all([
         fetch("/api/schema", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: src.data.dbType, config: src.data.config }),
+          signal: controller.signal,
         }),
         fetch("/api/schema", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: dst.data.dbType, config: dst.data.config }),
+          signal: controller.signal,
         }),
       ]);
+
+      if (controller.signal.aborted) {
+        throw new DOMException("Run aborted", "AbortError");
+      }
 
       const srcPayload = await srcSchemaRes.json();
       const dstPayload = await dstSchemaRes.json();
@@ -686,17 +928,30 @@ function EditorInner() {
       const srcCols = (srcPayload.columns || []) as { name: string }[];
       const dstCols = (dstPayload.columns || []) as { name: string }[];
 
+      setRunStatus({ state: "running", message: "Aligning columns..." });
+
       // auto-map by name (case-insensitive)
       const mapping = srcCols.map((c) => {
         const match = dstCols.find((d) => d.name.toLowerCase() === c.name.toLowerCase());
         return { from: c.name, to: match ? match.name : c.name, cast: "STRING" as const };
       });
 
+      if (controller.signal.aborted) {
+        throw new DOMException("Run aborted", "AbortError");
+      }
+
+      setSchemaAbortController(null);
+
+      const generatedRunId = `run_${Math.random().toString(36).slice(2, 8)}_${Date.now()}`;
+      setCurrentRunId(generatedRunId);
+      setRunStatus({ state: "running", message: "Submitting workflow run..." });
+
       const runRes = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           version: 1,
+          runId: generatedRunId,
           source: { dbType: src.data.dbType, config: src.data.config },
           destination: { dbType: dst.data.dbType, config: dst.data.config },
           mapping,
@@ -704,16 +959,136 @@ function EditorInner() {
       });
 
       const json = await runRes.json();
-      alert(json.message || (runRes.ok ? "Run accepted" : "Run failed"));
+      if (json.cancelled) {
+        setRunStatus({ state: "cancelled", message: json.message || "Workflow run cancelled" });
+      } else if (runRes.ok) {
+        setRunStatus({ state: "success", message: json.message || "Workflow run accepted" });
+      } else {
+        setRunStatus({ state: "error", message: json.error || json.message || "Workflow run failed" });
+      }
+
+      if (!json.cancelled) {
+        alert(json.message || (runRes.ok ? "Run accepted" : "Run failed"));
+      }
       if (json.outputUrl) window.open(json.outputUrl, "_blank");
     } catch (e: any) {
+      if (e?.name === "AbortError") {
+        setRunStatus({ state: "cancelled", message: "Workflow run cancelled" });
+        return;
+      }
       console.error(e);
+      setRunStatus({ state: "error", message: e?.message || "Run failed" });
       alert(e?.message || "Run failed");
+    } finally {
+      setSchemaAbortController(null);
+      setCurrentRunId(null);
+    }
+  };
+
+  const stopRun = useCallback(async () => {
+    if (runState !== "running" && runState !== "cancelling") return;
+
+    // If we have not begun the server run yet, abort the schema fetches.
+    if (!currentRunId) {
+      if (schemaAbortController) {
+        schemaAbortController.abort();
+        setSchemaAbortController(null);
+      }
+      setRunStatus({ state: "cancelled", message: "Workflow run cancelled" });
+      return;
+    }
+
+    setRunStatus({ state: "cancelling", message: "Requesting stop..." });
+    try {
+      const res = await fetch(`/api/run/${currentRunId}/cancel`, { method: "POST" });
+      const payload = await res.json().catch(() => ({ message: "Stop requested" }));
+
+      if (res.status === 404) {
+        setRunStatus({ state: "cancelled", message: "Run already finished" });
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(payload?.message || "Unable to stop workflow run");
+      }
+
+      setRunStatus({
+        state: "cancelling",
+        message: payload?.message || "Stop requested...",
+      });
+    } catch (err: any) {
+      console.error(err);
+      setRunStatus({
+        state: "error",
+        message: err?.message || "Unable to cancel run",
+      });
+    }
+  }, [currentRunId, runState, schemaAbortController, setRunStatus]);
+
+  const saveWorkflow = async () => {
+    if (!nodes.length || !edges.length) {
+      alert("Build a workflow before saving.");
+      return;
+    }
+    const name = window.prompt("Enter a name for this workflow", "My workflow");
+    if (!name || !name.trim()) return;
+
+    try {
+      setSaving(true);
+      const payload = {
+        name: name.trim(),
+        spec: buildSpec(nodes, edges),
+      };
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message || "Failed to save workflow");
+      alert(`Workflow saved as "${json?.workflow?.name || name.trim()}"`);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to save workflow");
+    } finally {
+      setSaving(false);
     }
   };
 
   const leftWidth = leftCollapsed ? 42 : 340;
   const rightWidth = rightCollapsed ? 42 : 360;
+
+  let statusBadge: React.ReactNode = null;
+  if (runState !== "idle") {
+    const visuals = RUN_STATUS_VISUALS[runState];
+    const text = runMessage || visuals.fallback;
+    statusBadge = (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 12px",
+          borderRadius: 999,
+          background: visuals.bg,
+          color: visuals.color,
+          fontSize: 12,
+          fontWeight: 500,
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: visuals.dot,
+            display: "inline-block",
+          }}
+        />
+        <span>{text}</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 80px)" }}>
@@ -767,34 +1142,62 @@ function EditorInner() {
           }}
         >
           <div style={{ fontWeight: 600 }}>Workflow</div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            <button onClick={validate}>Validate</button>
-            <button onClick={exportSpec}>Export JSON</button>
-            <button
-              onClick={run}
-              style={{
-                background: "#059669",
-                color: "#fff",
-                border: "1px solid #059669",
-              }}
-            >
-              Run
-            </button>
-            <button onClick={clearAll} style={{ color: "#dc2626" }}>
-              Clear
-            </button>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+            {statusBadge}
+            {isFlowAnimating && (
+              <button
+                onClick={stopRun}
+                disabled={!currentRunId || runState === "cancelling"}
+                style={{
+                  background: "#fee2e2",
+                  color: "#b91c1c",
+                  border: "1px solid #fecaca",
+                  fontWeight: 600,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  cursor: !currentRunId || runState === "cancelling" ? "not-allowed" : "pointer",
+                }}
+              >
+                {runState === "cancelling" ? "Stopping..." : "Stop"}
+              </button>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={validate}>Validate</button>
+              <button onClick={exportSpec}>Export JSON</button>
+              <button onClick={saveWorkflow} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={run}
+                disabled={runState === "running" || runState === "cancelling"}
+                style={{
+                  background: "#059669",
+                  color: "#fff",
+                  border: "1px solid #059669",
+                  opacity: runState === "running" || runState === "cancelling" ? 0.65 : 1,
+                  cursor:
+                    runState === "running" || runState === "cancelling" ? "not-allowed" : "pointer",
+                }}
+              >
+                {runState === "running" || runState === "cancelling" ? "Running..." : "Run"}
+              </button>
+              <button onClick={clearAll} style={{ color: "#dc2626" }}>
+                Clear
+              </button>
+            </div>
           </div>
         </div>
 
         <div style={{ flex: 1, minHeight: 0 }}>
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={decoratedEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onSelectionChange={onSelectionChange}
-            nodeTypes={{ SourceNode, DestinationNode }}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             isValidConnection={isValidConnection}
             fitView
             fitViewOptions={{ padding: 0.2 }}

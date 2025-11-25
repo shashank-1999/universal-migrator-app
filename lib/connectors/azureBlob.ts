@@ -49,11 +49,21 @@ export async function azReadRows(cfg: AzCfg): Promise<Row[]> {
   return parse(csv, { columns: true, skip_empty_lines: true });
 }
 
-export async function azWriteRows(cfg: AzCfg, rows: Row[]): Promise<void> {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function azWriteRows(cfg: AzCfg, rows: Row[], options?: WriteOptions): Promise<void> {
+  if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
   const cols = rows.length ? Object.keys(rows[0]) : [];
   const csv = stringify(rows, { header: true, columns: cols });
   const client = svc(cfg);
   const cc = client.getContainerClient(cfg.container);
   const bc = cc.getBlockBlobClient(cfg.blob);
   await bc.upload(csv, Buffer.byteLength(csv), { blobHTTPHeaders: { blobContentType: "text/csv" } });
+}
+
+export async function azureBlobQuickCheck(cfg: AzCfg): Promise<void> {
+  // Check if container exists and is accessible
+  const client = svc(cfg);
+  const cc = client.getContainerClient(cfg.container);
+  await cc.exists();
 }

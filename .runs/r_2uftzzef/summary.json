@@ -1,0 +1,12 @@
+{
+  "runId": "r_2uftzzef",
+  "status": "error",
+  "startedAt": "2025-11-20T07:07:55.105Z",
+  "sourceType": "mysql",
+  "destinationType": "postgres",
+  "loadMode": "full",
+  "scheduleId": "9dd10257-3500-4b2d-9ee9-c7b3bb717d9f",
+  "endedAt": "2025-11-20T07:07:55.148Z",
+  "durationMs": 43,
+  "error": "Access denied for user ''@'localhost' (using password: NO)"
+}

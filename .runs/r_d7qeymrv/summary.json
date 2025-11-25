@@ -1,0 +1,15 @@
+{
+  "runId": "r_d7qeymrv",
+  "status": "success",
+  "startedAt": "2025-11-19T09:46:51.158Z",
+  "sourceType": "postgres",
+  "destinationType": "mssql",
+  "sourceTableName": "testing_ckyc",
+  "destinationTableName": "testing_ckyc",
+  "endedAt": "2025-11-19T10:11:36.478Z",
+  "durationMs": 1485320,
+  "rowsRead": 419832,
+  "rowsWritten": 419832,
+  "rowsMoved": 419832,
+  "message": "Run complete: 419832 rows moved postgres → mssql"
+}

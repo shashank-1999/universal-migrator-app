@@ -25,6 +25,10 @@ const pgClient = (c: PgCfg) =>
 
 /** Connection test used by /api/test-connection */
 export async function pgTestConnection(cfg: PgCfg) {
+  // Validate required fields
+  if (!cfg.host || !cfg.user || !cfg.password || !cfg.database) {
+    throw new Error("PostgreSQL requires: host, user, password, database");
+  }
   const client = pgClient(cfg);
   try {
     await client.connect();
@@ -62,24 +66,56 @@ export async function pgSchema(cfg: PgCfg): Promise<SchemaColumn[]> {
 }
 
 /** Read all rows from schema.table */
-export async function pgReadRows(cfg: PgCfg): Promise<Row[]> {
+export async function pgReadRows(cfg: PgCfg & { query?: string }): Promise<Row[]> {
+  const client = pgClient(cfg);
+  await client.connect();
+  try {
+    if (cfg.query?.trim()) {
+      // Use custom query if provided
+      const r = await client.query(cfg.query);
+      return r.rows as Row[];
+    } else {
+      // Fall back to selecting all from table
+      const sch = cfg.schema || "public";
+      const r = await client.query(`SELECT * FROM "${sch}"."${cfg.table}"`);
+      return r.rows as Row[];
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+/** Create table if it doesn't exist */
+export async function pgCreateTable(cfg: PgCfg, createTableSQL: string): Promise<void> {
+  const client = pgClient(cfg);
+  await client.connect();
+  try {
+    await client.query(createTableSQL);
+  } finally {
+    await client.end();
+  }
+}
+
+export async function pgTruncateTable(cfg: PgCfg): Promise<void> {
   const client = pgClient(cfg);
   await client.connect();
   try {
     const sch = cfg.schema || "public";
-    const r = await client.query(`SELECT * FROM "${sch}"."${cfg.table}"`);
-    return r.rows as Row[];
+    await client.query(`TRUNCATE TABLE "${sch}"."${cfg.table}" RESTART IDENTITY`);
   } finally {
     await client.end();
   }
 }
 
 /** Insert rows into schema.table (naive row-by-row insert) */
-export async function pgWriteRows(cfg: PgCfg, rows: Row[]): Promise<void> {
+type WriteOptions = { isCancelled?: () => boolean };
+
+export async function pgWriteRows(cfg: PgCfg & { createTable?: boolean }, rows: Row[], options?: WriteOptions): Promise<void> {
   if (!rows.length) return;
   const client = pgClient(cfg);
   await client.connect();
   try {
+    if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
     const sch = cfg.schema || "public";
     const cols = Object.keys(rows[0]);
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
@@ -87,6 +123,7 @@ export async function pgWriteRows(cfg: PgCfg, rows: Row[]): Promise<void> {
       .map((c) => `"${c}"`)
       .join(",")}) VALUES (${placeholders})`;
     for (const row of rows) {
+      if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
       await client.query(sql, cols.map((c) => (row as any)[c]));
     }
   } finally {
