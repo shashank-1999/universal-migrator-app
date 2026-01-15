@@ -4,9 +4,10 @@ import crypto from "crypto";
 export type SavedWorkflow = {
   id: string;
   name: string;
-  spec: any;
+  spec: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  createdBy?: string;
 };
 
 const FILE = "workflows.json";
@@ -15,7 +16,7 @@ export function listWorkflows(): SavedWorkflow[] {
   return readJsonFile<SavedWorkflow[]>(FILE, []);
 }
 
-export function saveWorkflow(name: string, spec: any): SavedWorkflow {
+export function saveWorkflow(name: string, spec: Record<string, unknown>, createdBy?: string): SavedWorkflow {
   const all = listWorkflows();
   const now = new Date().toISOString();
   const wf: SavedWorkflow = {
@@ -24,6 +25,7 @@ export function saveWorkflow(name: string, spec: any): SavedWorkflow {
     spec,
     createdAt: now,
     updatedAt: now,
+    createdBy,
   };
   all.push(wf);
   writeJsonFile(FILE, all);

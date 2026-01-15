@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
       default:
         return new NextResponse("Unsupported database type", { status: 400 });
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("execute-query error:", err);
-    return new NextResponse(err?.message || String(err), { status: 500 });
+    return new NextResponse(err instanceof Error ? err.message : String(err), { status: 500 });
   }
 }

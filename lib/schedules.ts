@@ -3,7 +3,7 @@ import { readJsonFile, writeJsonFile } from "./jsonStore";
 
 export type ScheduleFrequency = "daily" | "weekly" | "monthly";
 
-export type LoadType = "full" | "incremental";
+export type LoadType = "full" | "incremental" | "merge";
 
 export type SavedSchedule = {
   id: string;
@@ -14,6 +14,7 @@ export type SavedSchedule = {
   dayOfMonth?: number; // monthly
   loadType: LoadType;
   incrementalColumn?: string;
+  startAt?: string;
   createdAt: string;
   lastRunAt?: string;
   lastStatus?: "running" | "success" | "error";

@@ -4,34 +4,42 @@ import { mysqlSchema } from "@/lib/connectors/mysql";
 import { mssqlSchema } from "@/lib/connectors/mssql";
 import { csvSchema } from "@/lib/connectors/csv";
 import { excelSchema } from "@/lib/connectors/excel";
+import { jsonSchema } from "@/lib/connectors/json";
+import { parquetSchema } from "@/lib/connectors/parquet";
 // add others if you use them...
 
 export async function POST(req: NextRequest) {
   try {
     const { type, config } = await req.json();
 
-    switch ((type || "").toLowerCase()) {
+    const normalized = (type || "").toLowerCase();
+
+    switch (normalized) {
       case "postgres":
       case "postgresql":
-        return NextResponse.json(await pgSchema(config));
+        return NextResponse.json({ columns: await pgSchema(config) });
       case "mysql":
-        return NextResponse.json(await mysqlSchema(config));
+        return NextResponse.json({ columns: await mysqlSchema(config) });
       case "mssql":
       case "sqlserver":
-        return NextResponse.json(await mssqlSchema(config));
+        return NextResponse.json({ columns: await mssqlSchema(config) });
       case "csv":
-        return NextResponse.json(await csvSchema(config));
+        return NextResponse.json({ columns: await csvSchema(config) });
       case "excel":
-        return NextResponse.json(await excelSchema(config));
+        return NextResponse.json({ columns: await excelSchema(config) });
+      case "json":
+        return NextResponse.json({ columns: await jsonSchema(config) });
+      case "parquet":
+        return NextResponse.json({ columns: await parquetSchema(config) });
       default:
         return NextResponse.json(
-          { message: `Unsupported type: ${type}` },
+          { error: `Unsupported type: ${type}` },
           { status: 400 }
         );
     }
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { message: e?.message || "Schema fetch failed" },
+      { error: e instanceof Error ? e.message : "Schema fetch failed" },
       { status: 500 }
     );
   }

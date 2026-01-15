@@ -1,7 +1,7 @@
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
-import { parse } from "csv-parse/sync";
-import { stringify } from "csv-stringify/sync";
 import { Row, SchemaColumn } from "../types";
+import { serializeRows, readStructuredOrBinary, StorageFormat } from "../objectStorage";
+import { appendTimestampToFilename } from "../filenameHelper";
 
 type AzCfg = {
   connectionString?: string;
@@ -9,6 +9,7 @@ type AzCfg = {
   accountKey?: string;
   container: string;
   blob: string; // path inside container
+  format?: StorageFormat;
 };
 
 function svc(cfg: AzCfg) {
@@ -19,13 +20,21 @@ function svc(cfg: AzCfg) {
   );
 }
 
-async function getCsv(cfg: AzCfg): Promise<string> {
+async function getBuffer(cfg: AzCfg): Promise<Buffer> {
   const client = svc(cfg);
   const cc = client.getContainerClient(cfg.container);
   const bc = cc.getBlockBlobClient(cfg.blob);
   const dl = await bc.download();
   const buf = await streamToBuffer(dl.readableStreamBody!);
-  return buf.toString("utf8");
+  return buf;
+}
+
+export async function azureBlobProbe(cfg: AzCfg, length = 4096): Promise<Buffer> {
+  const client = svc(cfg);
+  const cc = client.getContainerClient(cfg.container);
+  const bc = cc.getBlockBlobClient(cfg.blob);
+  const dl = await bc.download(0, length);
+  return streamToBuffer(dl.readableStreamBody!);
 }
 
 function streamToBuffer(stream: NodeJS.ReadableStream) {
@@ -38,28 +47,41 @@ function streamToBuffer(stream: NodeJS.ReadableStream) {
 }
 
 export async function azSchema(cfg: AzCfg): Promise<SchemaColumn[]> {
-  const csv = await getCsv(cfg);
-  const rows = parse(csv, { columns: true, skip_empty_lines: true });
+  const buf = await getBuffer(cfg);
+  const { rows } = await readStructuredOrBinary(buf, cfg.format);
   const first = rows[0] || {};
   return Object.keys(first).map((k) => ({ name: k, type: "STRING" }));
 }
 
 export async function azReadRows(cfg: AzCfg): Promise<Row[]> {
-  const csv = await getCsv(cfg);
-  return parse(csv, { columns: true, skip_empty_lines: true });
+  const buf = await getBuffer(cfg);
+  const { format, rows } = await readStructuredOrBinary(buf, cfg.format);
+  if (format === "binary") {
+    throw new Error(
+      "Source object is not CSV/Parquet; detected binary payload (use a structured file or destination storage)."
+    );
+  }
+  return rows;
 }
+
+// Aliases for consistency with other connectors
+export const azureBlobReadRows = azReadRows;
 
 type WriteOptions = { isCancelled?: () => boolean };
 
 export async function azWriteRows(cfg: AzCfg, rows: Row[], options?: WriteOptions): Promise<void> {
   if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
-  const cols = rows.length ? Object.keys(rows[0]) : [];
-  const csv = stringify(rows, { header: true, columns: cols });
+  const format = (cfg.format as "csv" | "parquet") ?? "csv";
+  const { buffer, contentType } = await serializeRows(rows, format);
+  const blobWithTimestamp = appendTimestampToFilename(cfg.blob);
   const client = svc(cfg);
   const cc = client.getContainerClient(cfg.container);
-  const bc = cc.getBlockBlobClient(cfg.blob);
-  await bc.upload(csv, Buffer.byteLength(csv), { blobHTTPHeaders: { blobContentType: "text/csv" } });
+  const bc = cc.getBlockBlobClient(blobWithTimestamp);
+  await bc.upload(buffer, buffer.length, { blobHTTPHeaders: { blobContentType: contentType } });
 }
+
+// Alias for consistency with other connectors
+export const azureBlobWriteRows = azWriteRows;
 
 export async function azureBlobQuickCheck(cfg: AzCfg): Promise<void> {
   // Check if container exists and is accessible

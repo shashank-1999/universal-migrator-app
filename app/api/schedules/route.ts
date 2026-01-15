@@ -8,7 +8,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { workflowId, frequency, time, daysOfWeek, dayOfMonth, loadType, incrementalColumn } =
+    const { workflowId, frequency, time, startAt, daysOfWeek, dayOfMonth, loadType, incrementalColumn } =
       await req.json();
     if (!workflowId) {
       return NextResponse.json({ ok: false, message: "workflowId is required" }, { status: 400 });
@@ -24,6 +24,12 @@ export async function POST(req: NextRequest) {
     }
     if (!time || !/^\d{2}:\d{2}$/.test(time)) {
       return NextResponse.json({ ok: false, message: "Time must be HH:MM" }, { status: 400 });
+    }
+    if (!startAt || Number.isNaN(Date.parse(startAt))) {
+      return NextResponse.json(
+        { ok: false, message: "Start date/time must be a valid datetime" },
+        { status: 400 }
+      );
     }
 
     if (freq === "weekly" && (!Array.isArray(daysOfWeek) || daysOfWeek.length === 0)) {
@@ -57,6 +63,7 @@ export async function POST(req: NextRequest) {
       workflowId,
       frequency: freq,
       time,
+      startAt,
       daysOfWeek: freq === "weekly" ? daysOfWeek : undefined,
       dayOfMonth: freq === "monthly" ? Number(dayOfMonth) : undefined,
       loadType: mode,
@@ -64,10 +71,10 @@ export async function POST(req: NextRequest) {
     };
     const saved = addSchedule(payload);
     return NextResponse.json({ ok: true, schedule: saved });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[POST /api/schedules]", err);
     return NextResponse.json(
-      { ok: false, message: err?.message || "Failed to save schedule" },
+      { ok: false, message: err instanceof Error ? err.message : "Failed to save schedule" },
       { status: 500 }
     );
   }

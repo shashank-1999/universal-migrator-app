@@ -1,4 +1,0 @@
-{"ts":"2025-11-17T11:35:15.524Z","runId":"r_ktkg2l6t","ev":"RUN_START"}
-{"ts":"2025-11-17T11:35:15.530Z","runId":"r_ktkg2l6t","ev":"SPEC","spec":{"version":1,"source":{"dbType":"csv","config":{"path":"C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763379004013_6daeb96c123f_products-2000000.csv","uploadedPath":"C:\\Users\\ShashankKumar\\Downloads\\universal-migrator-mvp\\uploads\\1763379004013_6daeb96c123f_products-2000000.csv","uploadedName":"products-2000000.csv"}},"destination":{"dbType":"postgres","config":{"host":"127.0.0.1","port":"5432","user":"postgres","password":"****","database":"School","schema":"","table":"Testdata","query":""}},"mapping":[]}}
-{"ts":"2025-11-17T11:35:33.958Z","runId":"r_ktkg2l6t","ev":"READ_COMPLETE","rows":2000000}
-{"ts":"2025-11-17T11:35:33.962Z","runId":"r_ktkg2l6t","ev":"TRUNCATE_DESTINATION","destination":"postgres"}

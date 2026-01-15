@@ -169,6 +169,12 @@
   color: var(--text-muted);
 }
 
+.subtext {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -202,6 +208,31 @@
   border: 1px dashed rgba(148, 163, 184, 0.5);
   border-radius: 16px;
   text-align: center;
+  color: var(--text-muted);
+}
+
+.workflowList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workflowItem {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(79, 70, 229, 0.04);
+}
+
+.workflowActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.workflowMetaText {
+  font-size: 13px;
   color: var(--text-muted);
 }
 

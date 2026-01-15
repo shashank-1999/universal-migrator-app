@@ -1,9 +1,13 @@
 export type DBType =
   | "csv"
   | "excel"
+  | "json"
+  | "parquet"
   | "postgres"
   | "mysql"
   | "mssql"
+  | "oracle"
+  | "minio"
   | "s3"
   | "gcs"
   | "azureBlob";
@@ -17,8 +21,58 @@ export type SourceOrDest = {
   config: Record<string, any>;
 };
 
-export type MappingItem = { from: string; to: string; cast?: string };
-export type Mapping = MappingItem[];
+export type CastType = "STRING" | "NUMBER" | "BOOLEAN" | "DATE";
+
+export type ComparisonOperator =
+  | "equals"
+  | "notEquals"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "greaterThan"
+  | "lessThan"
+  | "isEmpty"
+  | "isNotEmpty";
+
+export type ColumnCondition = {
+  field?: string;
+  operator: ComparisonOperator;
+  value?: string;
+  thenValue?: string;
+  elseValue?: string;
+};
+
+export type ColumnConcat = {
+  sources: string[];
+  separator?: string;
+};
+
+export type ColumnSplit = {
+  delimiter: string;
+  partIndex: number;
+};
+
+export type ColumnMapping = {
+  from: string;
+  to: string;
+  trim?: boolean;
+  cast?: CastType;
+  condition?: ColumnCondition;
+  concat?: ColumnConcat;
+  split?: ColumnSplit;
+  sourceType?: string;
+  destType?: string;
+};
+
+export type TransformFilter = {
+  id: string;
+  field: string;
+  operator: ComparisonOperator;
+  value?: string;
+  action: "keep" | "discard";
+};
+
+export type Mapping = ColumnMapping[];
 
 export type Row = Record<string, any>;
 

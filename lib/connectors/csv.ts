@@ -1,14 +1,14 @@
 // lib/connectors/csv.ts
-import { promises as fs } from "fs";
+import { promises as fs, createReadStream } from "fs";
 import path from "path";
 import { Row, SchemaColumn } from "../types";
 import { normalizeUserPath } from "../pathUtils";
 
 /* -------------------- small CSV helpers -------------------- */
 
-function escapeCsvCell(v: any): string {
+function escapeCsvCell(v: unknown): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  const s = typeof v === "string" ? v : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -84,51 +84,132 @@ async function resolveOnly(userPath: string): Promise<string> {
 
 /** Infer schema from header row (names) and first data row (very light typing). */
 export async function csvSchema(cfg: { path: string }): Promise<SchemaColumn[]> {
-  const p = await resolveOnly(cfg.path);
-  const txt = await fs.readFile(p, "utf8").catch(() => "");
-  if (!txt) {
-    // If file doesn't exist yet, return empty schema; UI can map later.
-    return [];
+  const rows = [];
+  for await (const row of csvReadStream(cfg)) {
+    rows.push(row);
+    if (rows.length >= 2) break;
   }
-  const rows = parseCsv(txt);
   if (!rows.length) return [];
-  const header = rows[0];
-
-  // naive typing from the first data row (if any)
-  const sample = rows[1] || [];
-  const cols: SchemaColumn[] = header.map((name, idx) => {
-    const v = sample[idx];
+  const header = Object.keys(rows[0]);
+  const sample = rows[1] ? rows[1] : rows[0];
+  return header.map((name) => {
+    const v = sample[name];
     let type = "STRING";
     if (v !== undefined && v !== null && v !== "") {
-      if (/^-?\d+$/.test(v)) type = "INT";
-      else if (/^-?\d+(\.\d+)?$/.test(v)) type = "FLOAT";
-      else if (/^\d{4}-\d{2}-\d{2}/.test(v)) type = "DATE";
+      const str = String(v);
+      if (/^-?\d+$/.test(str)) type = "INT";
+      else if (/^-?\d+(\.\d+)?$/.test(str)) type = "FLOAT";
+      else if (/^\d{4}-\d{2}-\d{2}/.test(str)) type = "DATE";
     }
     return { name, type };
   });
-  return cols;
+}
+
+/** Async CSV row stream */
+class CsvStreamParser {
+  private header: string[] | null = null;
+  private row: string[] = [];
+  private cell = "";
+  private inQuotes = false;
+
+  push(chunk: string): string[][] {
+    const rows: string[][] = [];
+    for (let i = 0; i < chunk.length; i += 1) {
+      const ch = chunk[i];
+      if (this.inQuotes) {
+        if (ch === '"') {
+          if (chunk[i + 1] === '"') {
+            this.cell += '"';
+            i += 1;
+          } else {
+            this.inQuotes = false;
+          }
+        } else {
+          this.cell += ch;
+        }
+      } else {
+        if (ch === '"') {
+          this.inQuotes = true;
+        } else if (ch === ",") {
+          this.row.push(this.cell);
+          this.cell = "";
+        } else if (ch === "\r") {
+          // ignore CR
+        } else if (ch === "\n") {
+          this.row.push(this.cell);
+          rows.push(this.row);
+          this.row = [];
+          this.cell = "";
+        } else {
+          this.cell += ch;
+        }
+      }
+    }
+    return rows;
+  }
+
+  flush(): string[] | null {
+    if (this.cell.length || this.row.length) {
+      this.row.push(this.cell);
+      this.cell = "";
+      const result = this.row;
+      this.row = [];
+      return result;
+    }
+    return null;
+  }
+
+  getHeader(): string[] | null {
+    return this.header;
+  }
+
+  setHeader(header: string[]) {
+    this.header = header;
+  }
 }
 
 export async function csvReadRows(cfg: { path: string }): Promise<Row[]> {
+  const rows: Row[] = [];
+  for await (const row of csvReadStream(cfg)) {
+    rows.push(row);
+  }
+  return rows;
+}
+
+export async function* csvReadStream(cfg: { path: string }): AsyncGenerator<Row> {
   const p = await resolveOnly(cfg.path);
-  let txt: string;
+  let stream;
   try {
-    txt = await fs.readFile(p, "utf8");
-  } catch (err: any) {
-    if (err?.code === "ENOENT") {
-      throw new Error(`CSV read failed: file not found at ${cfg.path}`);
+    // Increase buffer size for better throughput
+    stream = createReadStream(p, { encoding: "utf8", highWaterMark: 1024 * 1024 }); // 1MB buffer (default 64KB)
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException | undefined;
+    if (e && e.code === "ENOENT") {
+      return;
     }
     throw err;
   }
-  const rows = parseCsv(txt);
-  if (!rows.length) return [];
-  const header = rows[0];
-  const data = rows.slice(1);
-  return data.map((r) => {
+  const parser = new CsvStreamParser();
+  let header: string[] | null = null;
+  for await (const chunk of stream) {
+    const rows = parser.push(chunk);
+    for (const row of rows) {
+      if (!header) {
+        header = row;
+        parser.setHeader(header);
+        continue;
+      }
+      const obj: Row = {};
+      header.forEach((h, i) => (obj[h] = row[i]));
+      yield obj;
+    }
+  }
+  const tailRow = parser.flush();
+  if (tailRow && header) {
     const obj: Row = {};
-    header.forEach((h, i) => (obj[h] = r[i]));
-    return obj;
-  });
+    header.forEach((h, i) => (obj[h] = tailRow[i]));
+    yield obj;
+  }
 }
 
 type WriteOptions = { isCancelled?: () => boolean };

@@ -19,7 +19,10 @@
     "mysql2": "^3.15.3",
     "next": "14.2.4",
     "oracledb": "^6.10.0",
+    "parquetjs-lite": "^0.8.7",
     "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0",
+    "pg-query-stream": "^4.7.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "reactflow": "^11.11.4",
@@ -27,9 +30,16 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/mssql": "^9.1.8",
     "@types/node": "^20.11.30",
+    "@types/pg": "^8.15.6",
+    "@types/pg-copy-streams": "^1.2.5",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
+    "docx": "^9.5.1",
+    "markdown-to-docx": "^1.2.0",
+    "marked": "^17.0.1",
+    "md-to-pdf": "^5.2.5",
     "typescript": "^5.6.3"
   }
 }

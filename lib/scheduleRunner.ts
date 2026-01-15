@@ -7,6 +7,7 @@ import { mysqlSchema } from "./connectors/mysql";
 import { mssqlSchema } from "./connectors/mssql";
 import { csvSchema } from "./connectors/csv";
 import { excelSchema } from "./connectors/excel";
+import { SchemaColumn } from "./types";
 
 type NodeSpec = {
   id: string;
@@ -24,10 +25,16 @@ type WorkflowSpec = {
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const POLL_MS = Number(process.env.SCHEDULE_POLL_INTERVAL_MS ?? 60_000);
+const RETRY_INTERVAL_MS = 2 * 60_000;
+const MAX_ATTEMPTS = 3;
 
 class ScheduleRunner {
   private timer?: NodeJS.Timeout;
   private runningIds = new Set<string>();
+  private retryState = new Map<
+    string,
+    { attempts: number; timer?: NodeJS.Timeout }
+  >();
 
   constructor() {
     this.start();
@@ -54,15 +61,9 @@ class ScheduleRunner {
     for (const schedule of schedules) {
       if (this.runningIds.has(schedule.id)) continue;
       if (!this.shouldRun(schedule, now)) continue;
-      this.runningIds.add(schedule.id);
-      this.executeSchedule(schedule)
-        .catch((err) =>
-          console.error(
-            `[scheduleRunner] Failed schedule ${schedule.id}`,
-            err
-          )
-        )
-        .finally(() => this.runningIds.delete(schedule.id));
+      this.executeSchedule(schedule).catch((err) =>
+        console.error(`[scheduleRunner] Failed schedule ${schedule.id}`, err)
+      );
     }
   }
 
@@ -81,6 +82,11 @@ class ScheduleRunner {
   }
 
   private shouldRun(schedule: SavedSchedule, now: Date) {
+    if (schedule.startAt) {
+      const start = new Date(schedule.startAt);
+      if (now < start) return false;
+    }
+
     const targetMinutes = this.parseTimeToMinutes(schedule.time);
     if (targetMinutes === -1) return false;
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -124,23 +130,23 @@ class ScheduleRunner {
     return { source, destination };
   }
 
-  private async loadColumns(dbType?: string, config?: Record<string, any>) {
+  private async loadColumns(dbType?: string, config?: Record<string, unknown>) {
     if (!dbType) return [];
     const normalized = dbType.toLowerCase();
     try {
       switch (normalized) {
         case "postgres":
         case "postgresql":
-          return (await pgSchema(config)).columns ?? [];
+          return (await pgSchema(config as Parameters<typeof pgSchema>[0])) ?? [];
         case "mysql":
-          return (await mysqlSchema(config)).columns ?? [];
+          return (await mysqlSchema(config as Parameters<typeof mysqlSchema>[0])) ?? [];
         case "mssql":
         case "sqlserver":
-          return (await mssqlSchema(config)).columns ?? [];
+          return (await mssqlSchema(config as Parameters<typeof mssqlSchema>[0])) ?? [];
         case "csv":
-          return (await csvSchema(config)).columns ?? [];
+          return (await csvSchema(config as Parameters<typeof csvSchema>[0])) ?? [];
         case "excel":
-          return (await excelSchema(config)).columns ?? [];
+          return (await excelSchema(config as Parameters<typeof excelSchema>[0])) ?? [];
         default:
           return [];
       }
@@ -159,24 +165,29 @@ class ScheduleRunner {
 
     if (!srcCols.length || !dstCols.length) return undefined;
 
-    return srcCols.map((col: any) => {
+    return srcCols.map((col: SchemaColumn) => {
       const match = dstCols.find(
-        (d: any) =>
+        (d: SchemaColumn) =>
           typeof d.name === "string" &&
           typeof col.name === "string" &&
           d.name.toLowerCase() === col.name.toLowerCase()
       );
       if (match) {
-        return { from: col.name, to: match.name, cast: "STRING" as const };
+        return { from: col.name, to: match.name, cast: "STRING" as const, trim: false };
       }
-      return { from: col.name, to: col.name, cast: "STRING" as const };
+      return { from: col.name, to: col.name, cast: "STRING" as const, trim: false };
     });
   }
 
-  private async executeSchedule(schedule: SavedSchedule) {
+  private async executeSchedule(schedule: SavedSchedule, attempt = 1) {
     const workflows = listWorkflows();
     const workflow = workflows.find((w) => w.id === schedule.workflowId);
     const nowIso = new Date().toISOString();
+
+    if (this.runningIds.has(schedule.id) && attempt === 1) {
+      return;
+    }
+    this.runningIds.add(schedule.id);
 
     if (!workflow) {
       updateScheduleMeta(schedule.id, {
@@ -184,10 +195,11 @@ class ScheduleRunner {
         lastStatus: "error",
         lastMessage: "Workflow not found",
       });
+      this.cleanupRetryState(schedule.id);
       return;
     }
 
-    const spec: WorkflowSpec | undefined = workflow.spec;
+    const spec: WorkflowSpec | undefined = workflow.spec as unknown as WorkflowSpec;
     const { source, destination } = this.findNodes(spec);
     if (!source || !destination || !source.dbType || !destination.dbType) {
       updateScheduleMeta(schedule.id, {
@@ -200,19 +212,30 @@ class ScheduleRunner {
 
     const mapping = await this.buildMapping(source, destination);
 
+    const auditInfo = {
+      workflowOwner: workflow.createdBy?.trim() || workflow.name,
+      workflowName: workflow.name,
+    };
+
     const payload = {
       version: spec?.version ?? 1,
       source: { dbType: source.dbType, config: source.config },
       destination: { dbType: destination.dbType, config: destination.config },
       mapping,
       loadOptions: {
-        mode: schedule.loadType === "incremental" ? "incremental" : "full",
+        mode:
+          schedule.loadType === "incremental"
+            ? "incremental"
+            : schedule.loadType === "merge"
+            ? "merge"
+            : "full",
         incrementalColumn:
           schedule.loadType === "incremental"
             ? schedule.incrementalColumn
             : undefined,
         scheduleId: schedule.id,
       },
+      audit: auditInfo,
     };
 
     const startedIso = new Date().toISOString();
@@ -244,17 +267,57 @@ class ScheduleRunner {
       console.info(
         `[scheduleRunner] Schedule ${schedule.id} run started (${workflow.name})`
       );
-    } catch (err: any) {
+      this.cleanupRetryState(schedule.id);
+    } catch (err) {
       updateScheduleMeta(schedule.id, {
         lastRunAt: new Date().toISOString(),
         lastStatus: "error",
-        lastMessage: err?.message || "Run failed",
+        lastMessage:
+          err instanceof Error
+            ? `${err.message} (retry ${Math.min(attempt, MAX_ATTEMPTS)}/${MAX_ATTEMPTS})`
+            : "Run failed",
       });
       console.error(
         `[scheduleRunner] Schedule ${schedule.id} run failed`,
         err
       );
+      if (attempt < MAX_ATTEMPTS) {
+        this.scheduleRetry(schedule, attempt + 1);
+        return;
+      }
+      this.cleanupRetryState(schedule.id);
     }
+  }
+
+  private scheduleRetry(schedule: SavedSchedule, nextAttempt: number) {
+    const existing = this.retryState.get(schedule.id);
+    if (existing?.timer) {
+      clearTimeout(existing.timer);
+    }
+    const timer = setTimeout(() => {
+      this.executeSchedule(schedule, nextAttempt).catch((err) =>
+        console.error(
+          `[scheduleRunner] Retry ${nextAttempt} failed for ${schedule.id}`,
+          err
+        )
+      );
+    }, RETRY_INTERVAL_MS);
+    this.retryState.set(schedule.id, {
+      attempts: nextAttempt - 1,
+      timer,
+    });
+    updateScheduleMeta(schedule.id, {
+      lastMessage: `Retrying (${nextAttempt}/${MAX_ATTEMPTS}) in 2 minutes...`,
+    });
+  }
+
+  private cleanupRetryState(id: string) {
+    const entry = this.retryState.get(id);
+    if (entry?.timer) {
+      clearTimeout(entry.timer);
+    }
+    this.retryState.delete(id);
+    this.runningIds.delete(id);
   }
 }
 
@@ -263,8 +326,16 @@ declare global {
   var __scheduleRunner: ScheduleRunner | undefined;
 }
 
-if (!globalThis.__scheduleRunner) {
-  globalThis.__scheduleRunner = new ScheduleRunner();
+// Scheduler is opt-in. Start it only when explicitly enabled via env var.
+// This prevents background DB connections during build/CI when credentials
+// are not configured. To enable scheduler in production, set
+// `ENABLE_SCHEDULER=true` in the environment.
+if (process.env.ENABLE_SCHEDULER === "true") {
+  if (!globalThis.__scheduleRunner) {
+    globalThis.__scheduleRunner = new ScheduleRunner();
+  }
+} else {
+  console.info("[scheduleRunner] Disabled (set ENABLE_SCHEDULER=true to enable)");
 }
 
 export {};

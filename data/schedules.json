@@ -1,46 +1,13 @@
 [
   {
-    "workflowId": "6151b978-c0f3-4778-bba6-93fdc380a18c",
+    "workflowId": "508e09d2-6edc-4b15-9e6e-be73204bbae2",
     "frequency": "daily",
-    "time": "12:00",
-    "id": "80c297e4-f538-4e9a-9eb7-69b2157603f9",
-    "createdAt": "2025-11-13T07:17:27.103Z",
+    "time": "12:16",
     "loadType": "full",
-    "lastRunAt": "2025-11-20T07:07:55.167Z",
-    "lastStatus": "error",
-    "lastMessage": "Access denied for user ''@'localhost' (using password: NO)"
-  },
-  {
-    "workflowId": "e0d8c12e-a6e7-4404-8489-ece251d00633",
-    "frequency": "daily",
-    "time": "12:00",
-    "loadType": "full",
-    "id": "9dd10257-3500-4b2d-9ee9-c7b3bb717d9f",
-    "createdAt": "2025-11-13T10:11:36.242Z",
-    "lastRunAt": "2025-11-20T07:07:55.176Z",
-    "lastStatus": "error",
-    "lastMessage": "Access denied for user ''@'localhost' (using password: NO)"
-  },
-  {
-    "workflowId": "317f1d3e-5be1-4dda-97d2-c909542b145f",
-    "frequency": "daily",
-    "time": "16:38",
-    "loadType": "full",
-    "id": "9dac2a7d-c868-448e-9d9a-42a8f518897f",
-    "createdAt": "2025-11-18T11:04:43.552Z",
-    "lastRunAt": "2025-11-20T13:19:49.361Z",
+    "id": "67bb6bd1-6b42-4af7-a302-a1cc10581ea9",
+    "createdAt": "2025-12-18T06:44:59.875Z",
+    "lastRunAt": "2025-12-27T08:47:54.979Z",
     "lastStatus": "success",
-    "lastMessage": "Run complete: 419832 rows moved postgres → mssql"
-  },
-  {
-    "workflowId": "1c9d74f6-0cea-402a-b5b4-cd2ac9a75f4d",
-    "frequency": "daily",
-    "time": "10:07",
-    "loadType": "full",
-    "id": "2bec36ec-f827-4781-9c3b-854844b0982f",
-    "createdAt": "2025-11-21T04:35:40.615Z",
-    "lastRunAt": "2025-11-21T04:59:59.071Z",
-    "lastStatus": "success",
-    "lastMessage": "Run complete: 419832 rows moved postgres → mssql"
+    "lastMessage": "Run started"
   }
 ]

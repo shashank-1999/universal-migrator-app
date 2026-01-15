@@ -20,3 +20,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Uploads and temporary files
+uploads/
+.runs/
+.tmp/

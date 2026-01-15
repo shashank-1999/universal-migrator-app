@@ -3,15 +3,20 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Edge, Node } from "reactflow";
+import type { ColumnMapping, TransformFilter } from "./types";
 
 export type NodeKind = "source" | "destination" | "transform";
 export type DBType =
   | "csv"
   | "excel"
+  | "json"
+  | "parquet"
   | "postgres"
   | "mysql"
   | "mssql"
+  | "oracle"
   | "s3"
+  | "minio"
   | "gcs"
   | "azureBlob";
 
@@ -19,7 +24,12 @@ export type NodeData = {
   kind: NodeKind;
   label: string;
   dbType?: DBType;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
+  progressText?: string;
+  mappingPreview?: ColumnMapping[];
+  availableDestinationColumns?: string[];
+  sourceColumns?: string[];
+  filters?: TransformFilter[];
 };
 
 export type RunState =

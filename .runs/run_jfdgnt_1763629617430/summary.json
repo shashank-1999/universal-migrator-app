@@ -1,9 +1,0 @@
-{
-  "runId": "run_jfdgnt_1763629617430",
-  "status": "running",
-  "startedAt": "2025-11-20T09:06:57.462Z",
-  "sourceType": "postgres",
-  "destinationType": "mssql",
-  "sourceTableName": "testing_ckyc",
-  "destinationTableName": "testing_ckyc"
-}

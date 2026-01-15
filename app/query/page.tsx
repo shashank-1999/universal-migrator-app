@@ -103,8 +103,8 @@ export default function QueryPage() {
         truncated,
         maxRows,
       });
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -259,8 +259,8 @@ export default function QueryPage() {
       }
 
       setError("Connection successful!");
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -401,7 +401,7 @@ export default function QueryPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 rows={8}
-                placeholder="SELECT * FROM your_table WHERE condition = true;"
+                placeholder="Input a custom query"
               />
 
               {error && (
@@ -475,7 +475,7 @@ export default function QueryPage() {
                   <tbody>
                     {results.map((r, i) => (
                       <tr key={i} className={styles.tableRow}>
-                        {Object.values(r).map((v: any, j) => (
+                        {Object.values(r).map((v: unknown, j) => (
                           <td key={j} className={styles.tableCell}>
                             {v?.toString?.() ?? String(v)}
                           </td>

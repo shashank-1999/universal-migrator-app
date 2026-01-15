@@ -7,19 +7,20 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, spec } = await req.json();
+    const { name, spec, createdBy } = await req.json();
     if (!name || typeof name !== "string") {
       return NextResponse.json({ ok: false, message: "Name is required" }, { status: 400 });
     }
     if (!spec) {
       return NextResponse.json({ ok: false, message: "Spec is required" }, { status: 400 });
     }
-    const saved = saveWorkflow(name.trim(), spec);
+    const owner = typeof createdBy === "string" ? createdBy.trim() : undefined;
+    const saved = saveWorkflow(name.trim(), spec, owner);
     return NextResponse.json({ ok: true, workflow: saved });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[POST /api/workflows]", err);
     return NextResponse.json(
-      { ok: false, message: err?.message || "Failed to save workflow" },
+      { ok: false, message: err instanceof Error ? err.message : "Failed to save workflow" },
       { status: 500 }
     );
   }

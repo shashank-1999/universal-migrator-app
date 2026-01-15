@@ -48,6 +48,15 @@ export function inferSchema(rows: Row[]): InferredColumn[] {
         maxLength = str.length;
       }
 
+      const isDateObject = value instanceof Date;
+      if (isDateObject) {
+        hasDateSample = true;
+        dateLike = true;
+        numeric = false;
+        integer = false;
+        continue;
+      }
+
       const num = Number(value);
       if (Number.isNaN(num)) {
         numeric = false;
@@ -107,8 +116,45 @@ export function inferSchema(rows: Row[]): InferredColumn[] {
   });
 }
 
-export function generateCreateTableSQL(tableName: string, columns: InferredColumn[], dbType: 'postgres' | 'mysql' | 'mssql' | 'oracle'): string {
-  const typeMap: Record<string, Record<string, string>> = {
+export type DbTypeForSchema = "postgres" | "mysql" | "mssql" | "oracle";
+
+function qualifyTableName(tableName: string, schemaName: string | undefined, dbType: DbTypeForSchema) {
+  switch (dbType) {
+    case "postgres":
+      if (schemaName) return `"${schemaName}"."${tableName}"`;
+      return `"${tableName}"`;
+    case "mysql":
+      return schemaName ? `\`${schemaName}\`.\`${tableName}\`` : `\`${tableName}\``;
+    case "mssql":
+      if (schemaName) return `[${schemaName}].[${tableName}]`;
+      return `[${tableName}]`;
+    case "oracle":
+      if (schemaName) return `${schemaName.toUpperCase()}.${tableName.toUpperCase()}`;
+      return `${tableName.toUpperCase()}`;
+    default:
+      return tableName;
+  }
+}
+
+export type CreateTableOptions = {
+  allowNullValues?: boolean;
+  addAuditColumns?: boolean;
+  workflowOwner?: string;
+  workflowName?: string;
+};
+
+function escapeLiteral(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+export function generateCreateTableSQL(
+  tableName: string,
+  columns: InferredColumn[],
+  dbType: DbTypeForSchema,
+  schemaName?: string,
+  options?: CreateTableOptions
+): string {
+  const typeMap: Record<string, Record<string, (col: InferredColumn) => string>> = {
     postgres: {
       VARCHAR: (col) => `VARCHAR(${col.maxLength})`,
       TEXT: () => 'TEXT',
@@ -151,22 +197,88 @@ export function generateCreateTableSQL(tableName: string, columns: InferredColum
     }
   };
 
-  const columnDefs = columns.map(col => {
+  const quoteColumn = (name: string) => {
+    switch (dbType) {
+      case "postgres":
+      case "oracle":
+        return `"${name}"`;
+      case "mysql":
+        return `\`${name}\``;
+      case "mssql":
+        return `[${name}]`;
+      default:
+        return name;
+    }
+  };
+
+  const columnLines = columns.map((col) => {
     const typeMapper = typeMap[dbType][col.type] || typeMap[dbType]['VARCHAR'];
     const sqlType = typeMapper(col);
-    return `  "${col.name}" ${sqlType}${col.nullable ? '' : ' NOT NULL'}`;
-  }).join(',\n');
+    const allowNull = options?.allowNullValues ? true : col.nullable;
+    return `  ${quoteColumn(col.name)} ${sqlType}${allowNull ? '' : ' NOT NULL'}`;
+  });
+
+  const normalized = columns.map((col) => col.name.toLowerCase());
+  const existingNames = new Set(normalized);
+
+  const timestampInfo: Record<DbTypeForSchema, { type: string; default: string }> = {
+    postgres: { type: "TIMESTAMP", default: "CURRENT_TIMESTAMP" },
+    mysql: { type: "DATETIME", default: "CURRENT_TIMESTAMP" },
+    mssql: { type: "DATETIME2", default: "GETDATE()" },
+    oracle: { type: "TIMESTAMP", default: "CURRENT_TIMESTAMP" },
+  };
+
+  const ownerTypeMap: Record<DbTypeForSchema, string> = {
+    postgres: "VARCHAR(128)",
+    mysql: "VARCHAR(128)",
+    mssql: "VARCHAR(128)",
+    oracle: "VARCHAR2(128)",
+  };
+
+  const ownerDefaultMap: Record<DbTypeForSchema, string> = {
+    postgres: "CURRENT_USER",
+    mysql: "''", // avoid CURRENT_USER() default because it can fail on some MySQL versions; leave empty by default
+    mssql: "SYSTEM_USER",
+    oracle: "USER",
+  };
+
+  const auditDefs: string[] = [];
+  if (options?.addAuditColumns) {
+    if (!existingNames.has("last_modified_at")) {
+      const tsInfo = timestampInfo[dbType];
+      auditDefs.push(
+        `  ${quoteColumn("last_modified_at")} ${tsInfo.type} DEFAULT ${tsInfo.default}`
+      );
+    }
+    if (!existingNames.has("workflow_created_by")) {
+      const ownerLiteral =
+        options?.workflowOwner?.trim() ||
+        options?.workflowName?.trim() ||
+        "";
+      const ownerDefaultExpression = ownerLiteral
+        ? escapeLiteral(ownerLiteral)
+        : ownerDefaultMap[dbType];
+      auditDefs.push(
+        `  ${quoteColumn("workflow_created_by")} ${ownerTypeMap[dbType]} DEFAULT ${ownerDefaultExpression}`
+      );
+    }
+  }
+
+  const columnDefs = [...columnLines, ...auditDefs];
+  const allDefs = columnDefs.join(",\n");
 
   switch (dbType) {
     case 'postgres':
-      return `CREATE TABLE IF NOT EXISTS "${tableName}" (\n${columnDefs}\n);`;
-    case 'mysql':
-      return `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n${columnDefs}\n);`;
-    case 'mssql':
-      return `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '${tableName}')\nBEGIN\n  CREATE TABLE [${tableName}] (\n${columnDefs}\n  );\nEND;`;
+    return `CREATE TABLE IF NOT EXISTS ${qualifyTableName(tableName, schemaName, dbType)} (\n${allDefs}\n);`;
+    case "mysql":
+      return `CREATE TABLE IF NOT EXISTS ${qualifyTableName(tableName, schemaName, dbType)} (\n${allDefs}\n);`;
+    case "mssql":
+      return `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '${tableName}')\nBEGIN\n  CREATE TABLE ${qualifyTableName(tableName, schemaName, dbType)} (\n${allDefs}\n  );\nEND;`;
     case 'oracle':
       // Oracle doesn't have IF NOT EXISTS, so we need to check first
-      return `DECLARE\n  v_count NUMBER;\nBEGIN\n  SELECT COUNT(*) INTO v_count FROM user_tables WHERE table_name = UPPER('${tableName}');\n  IF v_count = 0 THEN\n    EXECUTE IMMEDIATE 'CREATE TABLE "${tableName}" (\n${columnDefs}\n    )';\n  END IF;\nEND;`;
+      const qualified = qualifyTableName(tableName, schemaName, dbType);
+      const oracleTable = schemaName ? `${schemaName.toUpperCase()}.${tableName.toUpperCase()}` : tableName.toUpperCase();
+      return `DECLARE\n  v_count NUMBER;\nBEGIN\n  SELECT COUNT(*) INTO v_count FROM user_tables WHERE table_name = '${oracleTable}';\n  IF v_count = 0 THEN\n    EXECUTE IMMEDIATE 'CREATE TABLE ${qualified} (\n${allDefs}\n    )';\n  END IF;\nEND;`;
     default:
       throw new Error(`Unsupported database type: ${dbType}`);
   }

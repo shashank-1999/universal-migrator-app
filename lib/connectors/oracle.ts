@@ -66,9 +66,9 @@ export async function oracleGetColumns(cfg: OracleCfg, table?: string) {
        ORDER BY COLUMN_ID
     `;
     const res = await conn.execute(sql, { owner, tname }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    const cols = (res.rows || []).map((r: any) => ({
-      name: r.COLUMN_NAME,
-      type: r.DATA_TYPE,
+    const cols = (res.rows || []).map((r: Record<string, unknown>) => ({
+      name: String(r.COLUMN_NAME),
+      type: String(r.DATA_TYPE),
     }));
     return cols;
   } finally {
@@ -88,15 +88,70 @@ export async function oracleReadRows(cfg: OracleCfg): Promise<Row[]> {
   });
   try {
     const sql = `SELECT * FROM ${cfg.table}`;
-    const res = await conn.execute(sql, [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    // Optimize with prefetch for better throughput
+    const res = await conn.execute(sql, [], { 
+      outFormat: oracledb.OUT_FORMAT_OBJECT,
+      prefetchRows: 10000, // Fetch 10K rows at a time
+      fetchArraySize: 10000 // Increase fetch buffer
+    });
     return (res.rows || []) as Row[];
   } finally {
     await conn.close();
   }
 }
 
+type StreamOptions = { isCancelled?: () => boolean };
+
+export async function oracleReadStream(
+  cfg: OracleCfg,
+  options?: StreamOptions
+): Promise<AsyncGenerator<Row>> {
+  if (!cfg.table) throw new Error("Oracle source requires 'table'");
+  const conn = await oracledb.getConnection({
+    user: cfg.user,
+    password: cfg.password,
+    connectString: toConnectString(cfg),
+  });
+
+  return (async function* () {
+    let resultSet: any | undefined;
+    try {
+      const sql = `SELECT * FROM ${cfg.table}`;
+      const res = await conn.execute(sql, [], {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        resultSet: true,
+        prefetchRows: 10000,
+        fetchArraySize: 10000,
+      });
+      resultSet = res.resultSet as any;
+      const batchSize = 1000;
+      while (resultSet) {
+        if (options?.isCancelled?.()) {
+          break;
+        }
+        const rows = await resultSet.getRows(batchSize);
+        if (!rows.length) break;
+        for (const row of rows) {
+          if (options?.isCancelled?.()) {
+            break;
+          }
+          yield row as Row;
+        }
+      }
+    } finally {
+      try {
+        await resultSet?.close();
+      } catch {}
+      await conn.close().catch(() => {});
+    }
+  })();
+}
+
 /** Writes rows to a table as destination (INSERT). */
-type WriteOptions = { isCancelled?: () => boolean };
+type WriteOptions = { 
+  isCancelled?: () => boolean;
+  oracleConnections?: any[]; // Persistent connection pool (reuse across batches)
+};
 
 export async function oracleWriteRows(cfg: OracleCfg, rows: Row[], options?: WriteOptions) {
   if (!cfg.table) throw new Error("Oracle destination requires 'table'");
@@ -107,22 +162,69 @@ export async function oracleWriteRows(cfg: OracleCfg, rows: Row[], options?: Wri
   const bindList = cols.map((_, i) => `:${i + 1}`).join(", ");
   const sql = `INSERT INTO ${cfg.table} (${colList}) VALUES (${bindList})`;
 
+  const chunkSize = 5000; // Optimal for Oracle executeMany (memory-efficient)
+  const poolSize = 8;
+  
+  // Use persistent connections if provided, otherwise create temporary ones
+  const usePersistentPool = !!options?.oracleConnections;
+  const connections = options?.oracleConnections || [];
+  
+  if (!usePersistentPool) {
+    // Create temporary connections
+    for (let i = 0; i < poolSize; i++) {
+      const conn = await oracledb.getConnection({
+        user: cfg.user,
+        password: cfg.password,
+        connectString: toConnectString(cfg),
+      });
+      connections.push(conn);
+    }
+  }
+  
+  const rowsPerWorker = Math.ceil(rows.length / poolSize);
+
+  const worker = async (conn: any, workerIdx: number) => {
+    const startIdx = workerIdx * rowsPerWorker;
+    const endIdx = Math.min(startIdx + rowsPerWorker, rows.length);
+    const myRows = rows.slice(startIdx, endIdx);
+    if (!myRows.length) return;
+
+    try {
+      for (let i = 0; i < myRows.length; i += chunkSize) {
+        if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+        const chunk = myRows.slice(i, i + chunkSize);
+        const binds = chunk.map((r) => cols.map((c) => r[c]));
+        await conn.executeMany(sql, binds, { autoCommit: true, batchErrors: false });
+      }
+    } catch (err) {
+      // Only close connection on error if we created it
+      if (!usePersistentPool) {
+        await conn.close().catch(() => {});
+      }
+      throw err;
+    }
+  };
+
+  try {
+    await Promise.all(connections.map((conn, idx) => worker(conn, idx)));
+  } finally {
+    // Only close connections if we created them (not using persistent pool)
+    if (!usePersistentPool) {
+      await Promise.all(connections.map(conn => conn.close().catch(() => {})));
+    }
+  }
+}
+
+export async function oracleCreateTable(cfg: OracleCfg, createTableSQL: string): Promise<void> {
+  if (!cfg.table) throw new Error("Oracle destination requires 'table'");
   const conn = await oracledb.getConnection({
     user: cfg.user,
     password: cfg.password,
     connectString: toConnectString(cfg),
-    // For better bulk throughput you can tune statementCacheSize, etc.
   });
-
   try {
-    const chunkSize = 500;
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
-      const chunk = rows.slice(i, i + chunkSize);
-      const binds = chunk.map((r) => cols.map((c) => r[c]));
-      await conn.executeMany(sql, binds);
-      await conn.commit();
-    }
+    await conn.execute(createTableSQL);
+    await conn.commit();
   } finally {
     await conn.close();
   }

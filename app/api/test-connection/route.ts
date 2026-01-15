@@ -10,13 +10,14 @@ import { mssqlTestConnection } from "@/lib/connectors/mssql";
 import { oracleTestConnection } from "@/lib/connectors/oracle";
 
 // Optional: file/object store quick checks (safe to keep or remove)
-import { s3QuickCheck } from "@/lib/connectors/s3";
+import { s3QuickCheck, minioQuickCheck } from "@/lib/connectors/s3";
+export const runtime = "nodejs";
 import { gcsQuickCheck } from "@/lib/connectors/gcs";
 import { azureBlobQuickCheck } from "@/lib/connectors/azureBlob";
 
 type NodeRole = "source" | "destination";
 
-function validateRequired(config: any, fields: string[], typeName: string): string | null {
+function validateRequired(config: Record<string, unknown>, fields: string[], typeName: string): string | null {
   for (const field of fields) {
     if (!config?.[field] || String(config[field]).trim() === "") {
       return `${typeName}: Missing or empty required field "${field}"`;
@@ -39,6 +40,15 @@ async function ensureReadablePath(userPath: string) {
   return resolved;
 }
 
+function sanitizePort(raw: unknown, fallback: number, typeName: string): number {
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  const value = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+    throw new Error(`${typeName}: Invalid port "${raw}". Enter a number between 1 and 65535.`);
+  }
+  return value;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { type, config, role } = await req.json();
@@ -48,28 +58,44 @@ export async function POST(req: NextRequest) {
       case "postgres": {
         const err = validateRequired(config, ["host", "user", "password", "database"], "PostgreSQL");
         if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
-        await pgTestConnection(config);
+        const sanitized = {
+          ...config,
+          port: sanitizePort(config?.port, 5432, "PostgreSQL"),
+        };
+        await pgTestConnection(sanitized);
         return NextResponse.json({ ok: true, message: "PostgreSQL: connection OK" });
       }
 
       case "mysql": {
         const err = validateRequired(config, ["host", "user", "password", "database"], "MySQL");
         if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
-        await mysqlTestConnection(config);
+        const sanitized = {
+          ...config,
+          port: sanitizePort(config?.port, 3306, "MySQL"),
+        };
+        await mysqlTestConnection(sanitized);
         return NextResponse.json({ ok: true, message: "MySQL: connection OK" });
       }
 
       case "mssql": {
         const err = validateRequired(config, ["host", "user", "password", "database"], "SQL Server");
         if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
-        await mssqlTestConnection(config);
+        const sanitized = {
+          ...config,
+          port: sanitizePort(config?.port, 1433, "SQL Server"),
+        };
+        await mssqlTestConnection(sanitized);
         return NextResponse.json({ ok: true, message: "SQL Server: connection OK" });
       }
 
       case "oracle": {
         const err = validateRequired(config, ["host", "service", "user", "password"], "Oracle");
         if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
-        await oracleTestConnection(config);
+        const sanitized = {
+          ...config,
+          port: sanitizePort(config?.port, 1521, "Oracle"),
+        };
+        await oracleTestConnection(sanitized);
         return NextResponse.json({ ok: true, message: "Oracle: connection OK" });
       }
 
@@ -93,12 +119,41 @@ export async function POST(req: NextRequest) {
             ok: true,
             message: `${friendlyType}: file found at ${resolved}`,
           });
-        } catch (e: any) {
-          const code = e?.code;
+        } catch (e) {
+          const code = e instanceof Error && (e as NodeJS.ErrnoException).code;
           const details =
             code === "ENOENT"
               ? `${friendlyType}: file not found at ${config.path}`
-              : `${friendlyType}: cannot read file (${e?.message || "unknown error"})`;
+              : `${friendlyType}: cannot read file (${e instanceof Error ? e.message : "unknown error"})`;
+          return NextResponse.json({ ok: false, message: details }, { status: 400 });
+        }
+      }
+      case "json":
+      case "parquet": {
+        const friendlyType = type === "json" ? "JSON file" : "Parquet file";
+        const err = validateRequired(config, ["path"], friendlyType);
+        if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
+
+        if (nodeRole === "destination") {
+          const resolved = resolveUserPath(config.path);
+          return NextResponse.json({
+            ok: true,
+            message: `${friendlyType}: path looks OK (will write to ${resolved})`,
+          });
+        }
+
+        try {
+          const resolved = await ensureReadablePath(config.path);
+          return NextResponse.json({
+            ok: true,
+            message: `${friendlyType}: file found at ${resolved}`,
+          });
+        } catch (e) {
+          const code = e instanceof Error && (e as NodeJS.ErrnoException).code;
+          const details =
+            code === "ENOENT"
+              ? `${friendlyType}: file not found at ${config.path}`
+              : `${friendlyType}: cannot read file (${e instanceof Error ? e.message : "unknown error"})`;
           return NextResponse.json({ ok: false, message: details }, { status: 400 });
         }
       }
@@ -108,6 +163,17 @@ export async function POST(req: NextRequest) {
         if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
         await s3QuickCheck(config);
         return NextResponse.json({ ok: true, message: "S3: params OK" });
+      }
+
+      case "minio": {
+        const err = validateRequired(
+          config,
+          ["endpoint", "bucket", "key", "accessKeyId", "secretAccessKey"],
+          "MinIO"
+        );
+        if (err) return NextResponse.json({ ok: false, message: err }, { status: 400 });
+        await minioQuickCheck(config);
+        return NextResponse.json({ ok: true, message: "MinIO: params OK" });
       }
 
       case "gcs": {
@@ -133,7 +199,7 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json({ ok: false, message: `Unsupported type: ${type}` }, { status: 400 });
     }
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, message: e?.message || "Test failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, message: e instanceof Error ? e.message : "Test failed" }, { status: 500 });
   }
 }

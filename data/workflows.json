@@ -1,267 +1,21 @@
 [
   {
-    "id": "6151b978-c0f3-4778-bba6-93fdc380a18c",
-    "name": "test",
+    "id": "508e09d2-6edc-4b15-9e6e-be73204bbae2",
+    "name": "testing",
     "spec": {
       "version": 1,
       "nodes": [
         {
-          "id": "kns2ppw",
+          "id": "0o1o5z8",
           "kind": "source",
           "label": "Source",
-          "dbType": "mysql",
+          "dbType": "parquet",
           "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
+            "path": "C:\\Users\\ShashankKumar\\Desktop\\backup\\universal-migrator-mvp\\uploads\\1765963994091_d84833c56b53_exception-clean.parquet"
           }
         },
         {
-          "id": "rc0rryq",
-          "kind": "destination",
-          "label": "Destination",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "kns2ppw",
-          "to": "rc0rryq"
-        }
-      ]
-    },
-    "createdAt": "2025-11-13T07:16:29.307Z",
-    "updatedAt": "2025-11-13T07:16:29.307Z"
-  },
-  {
-    "id": "8d7a80a7-44ff-4c98-9d38-80319405e9c6",
-    "name": "test2",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "kns2ppw",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        },
-        {
-          "id": "rc0rryq",
-          "kind": "destination",
-          "label": "Destination",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "kns2ppw",
-          "to": "rc0rryq"
-        }
-      ]
-    },
-    "createdAt": "2025-11-13T07:17:05.788Z",
-    "updatedAt": "2025-11-13T07:17:05.788Z"
-  },
-  {
-    "id": "bd4f33d0-195e-4cf2-929d-1f268fde1d95",
-    "name": "new_workflow",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "kns2ppw",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        },
-        {
-          "id": "rc0rryq",
-          "kind": "destination",
-          "label": "Destination",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "kns2ppw",
-          "to": "rc0rryq"
-        }
-      ]
-    },
-    "createdAt": "2025-11-13T09:15:56.846Z",
-    "updatedAt": "2025-11-13T09:15:56.846Z"
-  },
-  {
-    "id": "e0d8c12e-a6e7-4404-8489-ece251d00633",
-    "name": "tsdttds",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "aze99a1",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "table": "",
-            "query": ""
-          }
-        },
-        {
-          "id": "ln9zzru",
-          "kind": "destination",
-          "label": "Destination",
-          "dbType": "postgres",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "database": "",
-            "schema": "",
-            "table": "",
-            "query": "",
-            "createTable": true
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "aze99a1",
-          "to": "ln9zzru"
-        }
-      ]
-    },
-    "createdAt": "2025-11-13T10:11:20.242Z",
-    "updatedAt": "2025-11-13T10:11:20.242Z"
-  },
-  {
-    "id": "a3be032e-2b8a-472f-b824-2b3a2ceca233",
-    "name": "prakash",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "n3j5bbi",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "postgres",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "postgres",
-            "password": "NewStrongPassword!123",
-            "database": "",
-            "schema": "",
-            "table": "",
-            "query": ""
-          }
-        },
-        {
-          "id": "sf9h35a",
-          "kind": "destination",
-          "label": "Destination",
-          "dbType": "mysql",
-          "config": {
-            "host": "",
-            "port": "",
-            "user": "postgres",
-            "password": "NewStrongPassword!123",
-            "database": "",
-            "table": "",
-            "query": "",
-            "createTable": true
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "n3j5bbi",
-          "to": "sf9h35a"
-        }
-      ]
-    },
-    "createdAt": "2025-11-18T02:27:01.873Z",
-    "updatedAt": "2025-11-18T02:27:01.873Z"
-  },
-  {
-    "id": "317f1d3e-5be1-4dda-97d2-c909542b145f",
-    "name": "sch_test",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "3mnnfy3",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "postgres",
-          "config": {
-            "host": "127.0.0.1",
-            "port": "5432",
-            "user": "postgres",
-            "password": "NewStrongPassword!123",
-            "database": "School",
-            "schema": "",
-            "table": "testing_ckyc",
-            "query": ""
-          }
-        },
-        {
-          "id": "77hxrku",
+          "id": "dnrmlk9",
           "kind": "destination",
           "label": "Destination",
           "dbType": "mssql",
@@ -272,68 +26,48 @@
             "password": "Test@12345",
             "database": "testing",
             "schema": "",
-            "table": "testing_ckyc",
-            "query": ""
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "3mnnfy3",
-          "to": "77hxrku"
-        }
-      ]
-    },
-    "createdAt": "2025-11-18T11:04:20.482Z",
-    "updatedAt": "2025-11-18T11:04:20.482Z"
-  },
-  {
-    "id": "1c9d74f6-0cea-402a-b5b4-cd2ac9a75f4d",
-    "name": "My workflow test",
-    "spec": {
-      "version": 1,
-      "nodes": [
-        {
-          "id": "3mnnfy3",
-          "kind": "source",
-          "label": "Source",
-          "dbType": "postgres",
-          "config": {
-            "host": "127.0.0.1",
-            "port": "5432",
-            "user": "postgres",
-            "password": "NewStrongPassword!123",
-            "database": "School",
-            "schema": "",
-            "table": "testing_ckyc",
-            "query": ""
+            "table": "customers",
+            "createTable": true
           }
         },
         {
-          "id": "77hxrku",
+          "id": "5bdg447",
           "kind": "destination",
           "label": "Destination",
-          "dbType": "mssql",
+          "dbType": "minio",
           "config": {
-            "host": "LAPTOP-SO818TTE",
-            "port": "1433",
-            "user": "testuser",
-            "password": "Test@12345",
-            "database": "testing",
-            "schema": "",
-            "table": "testing_ckyc",
-            "query": ""
+            "endpoint": "http://localhost:9000/",
+            "region": "us-east-1",
+            "bucket": "my-bucket",
+            "key": "new_file123455555",
+            "accessKeyId": "minioadmin",
+            "secretAccessKey": "minioadmin123",
+            "format": "parquet"
           }
+        },
+        {
+          "id": "f0oagi0",
+          "kind": "transform",
+          "label": "Transform",
+          "config": {}
         }
       ],
       "edges": [
         {
-          "from": "3mnnfy3",
-          "to": "77hxrku"
+          "from": "dnrmlk9",
+          "to": "5bdg447"
+        },
+        {
+          "from": "0o1o5z8",
+          "to": "f0oagi0"
+        },
+        {
+          "from": "f0oagi0",
+          "to": "dnrmlk9"
         }
       ]
     },
-    "createdAt": "2025-11-21T04:35:17.958Z",
-    "updatedAt": "2025-11-21T04:35:17.958Z"
+    "createdAt": "2025-12-18T06:44:35.411Z",
+    "updatedAt": "2025-12-18T06:44:35.411Z"
   }
 ]
