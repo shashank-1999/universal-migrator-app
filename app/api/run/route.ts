@@ -609,6 +609,7 @@ type WriteOptions = {
   oracleConnections?: any[]; // Persistent Oracle connection pool
   skipIndexManagement?: boolean; // Skip index management for batch operations
   poolSize?: number; // Number of parallel writer connections
+  useCopy?: boolean; // Postgres COPY FROM STDIN
 };
 
 async function writeToDestination(dstType: DBType, dstCfg: Record<string, unknown>, rows: Row[], options?: WriteOptions) {
@@ -685,12 +686,21 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
   } = params;
 
   // Use a consistent batch size across DB destinations (align with MySQL settings)
+  // 50K batch size for better overall throughput
   const defaultBatchSize = 50000;
-  const batchSize = params.batchSize && params.batchSize > 1 ? Math.floor(params.batchSize) : defaultBatchSize;
+  const rawBatchSize =
+    params.batchSize ?? (destConfig as Record<string, unknown>)?.["batchSize"];
+  const parsedBatchSize =
+    typeof rawBatchSize === "string" ? Number(rawBatchSize) : rawBatchSize;
+  const batchSize =
+    typeof parsedBatchSize === "number" && Number.isFinite(parsedBatchSize) && parsedBatchSize > 1
+      ? Math.floor(parsedBatchSize)
+      : defaultBatchSize;
   const sampleLimit = 10;
 
   let rowsRead = 0;
   let rowsWritten = 0;
+  let lastProgressWritten = 0;
 
   // ✅ FIX: keep rowsTotal constant (or null) during PROGRESS.
   const rowsTotalForProgress: number | null = typeof totalRows === "number" ? totalRows : null;
@@ -704,10 +714,16 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
   let mysqlPool: any | undefined;
   let mssqlPool: any | undefined;
   let oracleConnections: any[] | undefined;
+  const useCopy = destType === "postgres" && (destConfig as any)?.useCopy !== false;
   
   if (destType === "postgres") {
     const cfg = destConfig as any;
-    const poolSize = 8;
+    const rawPoolSize = Number(cfg.writerPoolSize ?? cfg.poolSize);
+    const poolSize = useCopy
+      ? 1
+      : Number.isFinite(rawPoolSize) && rawPoolSize > 0
+      ? Math.min(Math.floor(rawPoolSize), 32)
+      : 8;
     pgClients = [];
     for (let i = 0; i < poolSize; i++) {
       const client = new PgClient({
@@ -731,13 +747,13 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
       password: cfg.password,
       database: cfg.database,
       waitForConnections: true,
-      connectionLimit: 8,
+      connectionLimit: 12, // Maximum performance: 12 parallel connections
       connectTimeout: 30_000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10_000,
     });
     
-    // Handle index management once at start
+    // Optimize InnoDB settings for bulk loading
     const conn = await mysql.createConnection({
       host: cfg.host,
       port: cfg.port ? Number(cfg.port) : 3306,
@@ -747,10 +763,28 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
       connectTimeout: 30_000,
     });
     try {
-      // Disable checks and drop indexes once at start
+      // Session-level optimizations
       await conn.query(`SET SESSION foreign_key_checks=0, SESSION unique_checks=0`);
+      await conn.query(`SET SESSION autocommit=0`); // Manual commit control
+      await conn.query(`SET SESSION sql_log_bin=0`); // Disable binary logging
+      console.log('[run] MySQL: Session optimizations applied (autocommit=0, sql_log_bin=0)');
+      
+      // Try to set aggressive global settings (requires SUPER privilege)
+      try {
+        await conn.query(`SET GLOBAL innodb_flush_log_at_trx_commit=0`); // Maximum speed (no disk flush)
+        console.log('[run] MySQL: Set innodb_flush_log_at_trx_commit=0 (MAXIMUM SPEED MODE)');
+      } catch (err1) {
+        console.log('[run] MySQL: Could not set innodb_flush_log_at_trx_commit=0 (requires SUPER privilege):', (err1 as Error).message);
+      }
+      
+      try {
+        await conn.query(`SET GLOBAL innodb_buffer_pool_size=4294967296`); // 4GB
+        console.log('[run] MySQL: Set innodb_buffer_pool_size=4GB');
+      } catch (err2) {
+        console.log('[run] MySQL: Could not set innodb_buffer_pool_size');
+      }
     } catch (err) {
-      console.warn("[run] Failed to disable MySQL checks:", err);
+      console.warn("[run] Failed to optimize MySQL session settings:", err);
     } finally {
       await conn.end();
     }
@@ -821,12 +855,14 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
       mssqlPool: mssqlPool, // Pass MSSQL persistent pool
       oracleConnections: oracleConnections, // Pass Oracle persistent pool
       skipIndexManagement: true, // Skip index management for batch operations (handled at start/end)
+      useCopy,
     });
 
     rowsWritten += batch.length;
 
-    // Report progress every 50K rows for optimal performance
-    if (rowsWritten % 50000 === 0) {
+    // Report progress every 50K rows (use delta so large batches still emit updates).
+    if (rowsWritten - lastProgressWritten >= 50000) {
+      lastProgressWritten = rowsWritten;
       await logger?.write({
         ev: "PROGRESS",
         stageId,
@@ -872,9 +908,11 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
   
   if (mysqlPool) {
     try {
-      // Re-enable checks and rebuild indexes at end
+      // Re-enable checks at end
       const mysql = await import("mysql2/promise");
       const cfg = destConfig as any;
+      
+      console.log("[run] MySQL cleanup: re-enabling checks and closing pool...");
       const conn = await mysql.createConnection({
         host: cfg.host,
         port: cfg.port ? Number(cfg.port) : 3306,
@@ -885,6 +923,7 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
       });
       try {
         await conn.query(`SET SESSION foreign_key_checks=1, SESSION unique_checks=1`);
+        console.log("[run] MySQL checks re-enabled");
       } catch (err) {
         console.warn("[run] Failed to re-enable MySQL checks:", err);
       } finally {
@@ -892,6 +931,7 @@ async function streamAndWriteRows(params: StreamWriteParams): Promise<{ rowsRead
       }
       
       await mysqlPool.end();
+      console.log("[run] MySQL pool closed");
     } catch (err) {
       console.warn("[run] Failed to close MySQL connection pool:", err);
     }

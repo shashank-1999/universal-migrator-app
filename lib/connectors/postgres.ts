@@ -1,6 +1,9 @@
 // lib/connectors/postgres.ts
 import { Client } from "pg";
 import QueryStream from "pg-query-stream";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import copyFrom from "pg-copy-streams";
 import { Row, SchemaColumn } from "../types";
 
 export type PgCfg = {
@@ -327,7 +330,12 @@ function normalizeQuery(cfg: { query?: string; customQuery?: string }) {
 
 /** High-performance COPY FROM STDIN protocol (3-7x faster than INSERT) */
 async function pgWriteRowsWithCopy(cfg: PgCfg, rows: Row[], options?: WriteOptions): Promise<void> {
-  const sch = cfg.schema || "public";
+  if (!rows.length) return;
+  
+  console.log(`[postgres] Using COPY FROM STDIN for ${rows.length} rows`);
+  
+  // Handle empty schema string (treat as 'public')
+  const sch = cfg.schema && cfg.schema.trim() ? cfg.schema : "public";
   const cols = Object.keys(rows[0]);
   
   // COPY protocol is single-threaded, so use one connection
@@ -339,36 +347,80 @@ async function pgWriteRowsWithCopy(cfg: PgCfg, rows: Row[], options?: WriteOptio
   }
   
   try {
-    // COPY command with proper escaping
-    const copySQL = `COPY "${sch}"."${cfg.table}" (${cols.map((c) => `"${c}"`).join(",")}) FROM STDIN WITH (FORMAT csv, HEADER false, DELIMITER E'\\t', NULL '\\N', ESCAPE '\\\\')`;
+    // COPY command using TEXT format with TAB delimiter (most efficient)
+    const copySQL = `COPY "${sch}"."${cfg.table}" (${cols.map((c) => `"${c}"`).join(",")}) FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')`;
+    console.log(`[postgres] COPY command: ${copySQL}`);
     
-    const stream = client.query(require('stream').Readable.from(generateCopyData()));
-    
-    async function* generateCopyData() {
-      for (const row of rows) {
-        if (options?.isCancelled?.()) {
-          throw new Error("Run cancelled by user");
+    const copyStream = client.query(copyFrom.from(copySQL));
+
+    let rowsProcessed = 0;
+    // Generate TEXT format data (tab-delimited with proper escaping)
+    const chunks: string[] = [];
+    for (const row of rows) {
+      if (options?.isCancelled?.()) {
+        throw new Error("Run cancelled by user");
+      }
+      
+      const values = cols.map((col) => {
+        const val = (row as Record<string, unknown>)[col];
+        if (val === null || val === undefined) return '\\N';
+        
+        // Convert Date objects to ISO string for PostgreSQL compatibility
+        let str: string;
+        if (val instanceof Date) {
+          str = val.toISOString();
+        } else {
+          str = String(val);
         }
         
-        // Generate TSV row with proper escaping
-        const values = cols.map((col) => {
-          const val = (row as Record<string, unknown>)[col];
-          if (val === null || val === undefined) return '\\N';
-          const str = String(val);
-          // Escape special characters
-          return str.replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-        });
-        
-        yield values.join('\t') + '\n';
+        // In TEXT format, we need to escape backslashes, tabs, newlines, and carriage returns
+        return str
+          .replace(/\\/g, '\\\\')   // Escape backslashes first
+          .replace(/\t/g, '\\t')    // Escape tabs
+          .replace(/\n/g, '\\n')    // Escape newlines
+          .replace(/\r/g, '\\r');   // Escape carriage returns
+      });
+      
+      chunks.push(values.join('\t') + '\n');
+      rowsProcessed++;
+      
+      // Write in batches of 5000 rows to avoid memory buildup
+      if (chunks.length >= 5000) {
+        copyStream.write(chunks.join(''));
+        chunks.length = 0;
+        console.log(`[postgres] COPY progress: ${rowsProcessed}/${rows.length} rows`);
       }
     }
     
-    await stream;
+    // Write any remaining rows
+    if (chunks.length > 0) {
+      copyStream.write(chunks.join(''));
+    }
+    
+    console.log(`[postgres] COPY data sent, closing stream...`);
+    
+    // Signal end of data
+    copyStream.end();
+    
+    // Wait for COPY to complete
+    await new Promise<void>((resolve, reject) => {
+      copyStream.on('finish', () => {
+        console.log(`[postgres] COPY completed successfully`);
+        resolve();
+      });
+      copyStream.on('error', (err) => {
+        console.error(`[postgres] COPY error:`, err);
+        reject(err);
+      });
+    });
     
     const maybe = options?.onProgress?.(rows.length);
     if (maybe && typeof maybe === 'object' && 'then' in maybe) {
       await maybe;
     }
+  } catch (err) {
+    console.error('[postgres] COPY FROM STDIN failed:', err);
+    throw err;
   } finally {
     if (shouldDisconnect) {
       await client.end().catch(() => {});

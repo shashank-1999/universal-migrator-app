@@ -104,6 +104,8 @@ export async function mysqlReadStream(
     ? rawQuery.replace(/;+\s*$/, "")
     : `SELECT * FROM \`${cfg.database}\`.\`${cfg.table}\``;
 
+  console.log(`[mysql] Starting read stream query: ${sql.substring(0, 100)}...`);
+
   const conn = mysqlBase.createConnection(normalizeCfg(cfg));
   await new Promise<void>((resolve, reject) => {
     conn.connect((err) => (err ? reject(err) : resolve()));
@@ -117,6 +119,7 @@ export async function mysqlReadStream(
   const stream = query.stream({ highWaterMark: 1000 });
 
   return (async function* () {
+    let rowCount = 0;
     try {
       for await (const row of stream as AsyncIterable<Row>) {
         if (options?.isCancelled?.()) {
@@ -125,8 +128,16 @@ export async function mysqlReadStream(
           } catch {}
           break;
         }
+        rowCount++;
+        
+        // Log progress every 100k rows
+        if (rowCount % 100000 === 0) {
+          console.log(`[mysql] Stream read ${rowCount} rows`);
+        }
+        
         yield row;
       }
+      console.log(`[mysql] Stream complete: total ${rowCount} rows read`);
     } finally {
       try {
         stream.destroy();
@@ -247,24 +258,39 @@ async function dropSecondaryIndexes(conn: mysqlPromise.Connection, cfg: MyCfg, i
 }
 
 async function recreateSecondaryIndexes(conn: mysqlPromise.Connection, cfg: MyCfg, indexes: IndexDef[]) {
-  for (const idx of indexes) {
-    try {
-      const cols = idx.columns.map((c) => `\`${c}\``).join(",");
-      const sql = `ALTER TABLE \`${cfg.database}\`.\`${cfg.table}\` ADD INDEX \`${idx.name}\` (${cols})`;
-      await conn.query(sql);
-    } catch {
-      /* ignore */
-    }
+  if (indexes.length > 0) {
+    console.log(`[mysql] Rebuilding ${indexes.length} secondary indexes in parallel (MySQL 8.0+)...`);
   }
+  
+  // Rebuild indexes in parallel using ALGORITHM=INPLACE, LOCK=NONE for MySQL 8.0+
+  const rebuildPromises = indexes.map(async (idx) => {
+    try {
+      console.log(`[mysql] Creating index ${idx.name}...`);
+      const cols = idx.columns.map((c) => `\`${c}\``).join(",");
+      const sql = `ALTER TABLE \`${cfg.database}\`.\`${cfg.table}\` ADD INDEX \`${idx.name}\` (${cols}), ALGORITHM=INPLACE, LOCK=NONE`;
+      const startTime = Date.now();
+      await conn.query(sql);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[mysql] Index ${idx.name} created in ${elapsed}s`);
+    } catch (err) {
+      console.warn(`[mysql] Failed to create index ${idx.name}:`, err);
+    }
+  });
+  
+  await Promise.all(rebuildPromises);
+  console.log(`[mysql] All ${indexes.length} indexes rebuilt in parallel`);
 }
 
 export async function mysqlWriteRows(
-  cfg: MyCfg & { createTable?: boolean; writerPoolSize?: number; batchSize?: number },
+  cfg: MyCfg & { createTable?: boolean; writerPoolSize?: number; batchSize?: number; useBulkInsert?: boolean },
   rows: Row[],
   options?: WriteOptions
 ): Promise<void> {
   if (!rows?.length) return;
   await ensureDatabase(cfg);
+
+  // Check if bulk insert is enabled (default: true for better performance)
+  const useBulkInsert = cfg.useBulkInsert !== false;
 
   // Skip index management if using persistent pool (indexes handled once at start/end of migration)
   const skipIndexMgmt = options?.skipIndexManagement ?? false;
@@ -277,6 +303,16 @@ export async function mysqlWriteRows(
   if (!skipIndexMgmt) {
     // Best-effort: disable FK/unique checks and drop non-unique secondary indexes during load
     adminConn = await open(cfg);
+    
+    // Session-level optimizations (innodb_flush_log_at_trx_commit is GLOBAL-only, set in route.ts)
+    try {
+      await adminConn.query(`SET SESSION autocommit=0`); // Manual commit for better batching
+      await adminConn.query(`SET SESSION sql_log_bin=0`); // Disable binary logging
+      console.log('[mysql] Session optimizations: autocommit=0, sql_log_bin=0');
+    } catch (err) {
+      console.warn('[mysql] Could not set session optimizations:', err);
+    }
+    
     secondaryIndexes = await fetchSecondaryIndexes(adminConn, cfg);
     await setChecks(adminConn, false);
     await dropSecondaryIndexes(adminConn, cfg, secondaryIndexes);
@@ -290,14 +326,47 @@ export async function mysqlWriteRows(
   try {
     const cols = Object.keys(rows[0]);
     
-    // Stream-based INSERT approach: split into chunks and use parallel writers
-    const chunkSize = 15000; // Increased from 10000 for better throughput
+    // Size-based batching: AGGRESSIVE mode for maximum speed
+    const targetBatchSizeMB = 50; // 50MB per batch for maximum throughput
+    const targetBatchSizeBytes = targetBatchSizeMB * 1024 * 1024;
+    
+    // Fast estimation: sample only 10 rows for speed
+    const sampleSize = Math.min(10, rows.length);
+    let totalSampleBytes = 0;
+    for (let i = 0; i < sampleSize; i++) {
+      for (const col of cols) {
+        const val = (rows[i] as Record<string, unknown>)[col];
+        if (val === null || val === undefined) {
+          totalSampleBytes += 2;
+        } else if (typeof val === 'string') {
+          totalSampleBytes += val.length;
+        } else if (typeof val === 'number') {
+          totalSampleBytes += 8;
+        } else if (val instanceof Date) {
+          totalSampleBytes += 24;
+        } else if (typeof val === 'boolean') {
+          totalSampleBytes += 1;
+        } else {
+          totalSampleBytes += JSON.stringify(val).length;
+        }
+      }
+    }
+    const avgRowSizeBytes = Math.ceil(totalSampleBytes / sampleSize);
+    const estimatedRowsPerBatch = Math.floor(targetBatchSizeBytes / avgRowSizeBytes);
+    // Smaller chunks to ensure many batches for full parallel distribution across 12 workers
+    // Each chunk should be ~5MB for better worker distribution (50K rows → ~10 batches → all 12 workers utilized)
+    const targetChunkMB = 5;
+    const targetChunkBytes = targetChunkMB * 1024 * 1024;
+    const chunkSize = Math.max(3000, Math.min(Math.floor(targetChunkBytes / avgRowSizeBytes), 15000));
+    
+    console.log(`[mysql] MAXIMUM SPEED MODE: ${avgRowSizeBytes} bytes/row, ${chunkSize} rows/batch (~${Math.round(chunkSize * avgRowSizeBytes / 1024 / 1024)}MB)`);
+    
     const batches: Row[][] = [];
     for (let i = 0; i < rows.length; i += chunkSize) {
       batches.push(rows.slice(i, i + chunkSize));
     }
 
-    const poolSize = 8; // more parallel writer connections for maximum throughput
+    const poolSize = useBulkInsert ? 12 : 8; // 12 parallel connections for maximum throughput
 
     // Use persistent pool if provided, otherwise create new one
     const pool = options?.mysqlPool || mysqlPromise.createPool({
@@ -307,23 +376,28 @@ export async function mysqlWriteRows(
     });
     
     // Check max_allowed_packet to prevent statement too large errors
-    let maxPacket = 67108864; // Default 64MB
+    let maxPacket = 268435456; // 256MB (user configured)
     try {
       const [rows] = await pool.query("SELECT @@max_allowed_packet as max_packet");
       maxPacket = (rows as any)[0].max_packet;
     } catch (err) {
       console.warn("[mysql] Failed to query max_allowed_packet, using default 64MB");
     }
+
+    console.log(`[mysql] Using ${useBulkInsert ? 'BULK INSERT' : 'standard INSERT'} mode with ${poolSize} connections, chunk size: ${chunkSize}`);
+    console.log(`[mysql] Total batches: ${batches.length}, distributing across ${poolSize} workers`);
     
-    const batchesPerWorker = Math.ceil(batches.length / poolSize);
+    let totalWritten = 0;
     
     const worker = async (workerIdx: number) => {
-      const startIdx = workerIdx * batchesPerWorker;
-      const endIdx = Math.min(startIdx + batchesPerWorker, batches.length);
-      const myBatches = batches.slice(startIdx, endIdx);
+      // Round-robin assignment: worker 0 gets batches 0,12,24..., worker 1 gets 1,13,25..., etc.
+      const myBatches = batches.filter((_, batchIdx) => batchIdx % poolSize === workerIdx);
+      console.log(`[mysql] Worker ${workerIdx}: assigned ${myBatches.length} batches`);
+      let workerWritten = 0;
       
       for (const chunk of myBatches) {
         if (options?.isCancelled?.()) throw new Error("Run cancelled by user");
+        
         const placeholders = chunk.map(() => `(${cols.map(() => "?").join(",")})`).join(",");
         const sql = `INSERT INTO \`${cfg.database}\`.\`${cfg.table}\` (${cols
           .map((c) => `\`${c}\``)
@@ -350,10 +424,21 @@ export async function mysqlWriteRows(
           const args = chunk.flatMap((r) => cols.map((c) => (r as Record<string, unknown>)[c]));
           await pool.query({ sql, values: args, timeout: 120_000 });
         }
+        
+        workerWritten += chunk.length;
+        
+        // Log progress every 50k rows per worker
+        if (workerWritten % 50000 < chunk.length) {
+          console.log(`[mysql] Worker ${workerIdx}: wrote ${workerWritten} rows`);
+        }
       }
+      
+      return workerWritten;
     };
     
-    await Promise.all(Array.from({ length: poolSize }, (_, idx) => worker(idx)));
+    const workerResults = await Promise.all(Array.from({ length: poolSize }, (_, idx) => worker(idx)));
+    totalWritten = workerResults.reduce((sum, count) => sum + count, 0);
+    console.log(`[mysql] Bulk insert completed: ${totalWritten} rows written using ${poolSize} parallel connections`);
     
     // Only close pool if we created it (not using persistent pool)
     if (!usePersistentPool) {
@@ -366,10 +451,12 @@ export async function mysqlWriteRows(
     
     if (!skipIndexMgmt) {
       // Re-enable checks and rebuild indexes
+      console.log("[mysql] Re-enabling foreign key and unique checks...");
       const admin = await open(cfg);
       await recreateSecondaryIndexes(admin, cfg, secondaryIndexes);
       await setChecks(admin, true);
       await admin.end();
+      console.log("[mysql] Index rebuild complete");
     }
   }
 }

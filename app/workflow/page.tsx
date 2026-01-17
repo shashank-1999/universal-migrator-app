@@ -134,6 +134,8 @@ const DB_OPTIONS: Record<
       { key: "database", label: "Database" },
       { key: "schema", label: "Schema", placeholder: "public" },
       { key: "table", label: "Table", placeholder: "people" },
+      { key: "batchSize", label: "Batch size (optional)", placeholder: "50000" },
+      { key: "writerPoolSize", label: "Writer pool size (optional)", placeholder: "8" },
     ],
   },
   oracle: {

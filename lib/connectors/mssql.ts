@@ -371,6 +371,7 @@ export async function mssqlReadStream(
     
     // TABLOCK is better than NOLOCK for full table scans - shared table lock, better sequential scan performance
     const query = `SELECT * FROM [${sch}].[${cfg.table}] WITH (TABLOCK, HOLDLOCK)`;
+    console.log(`[mssql] Starting stream query: ${query}`);
     const queryPromise = request.query(query);
 
     const queue: Row[] = [];
@@ -378,6 +379,7 @@ export async function mssqlReadStream(
     let error: Error | null = null;
     let resolver: (() => void) | null = null;
     let rejecter: ((err: Error) => void) | null = null;
+    let rowCount = 0;
 
     const waitForData = () =>
       new Promise<void>((resolve, reject) => {
@@ -393,11 +395,16 @@ export async function mssqlReadStream(
         return;
       }
       queue.push(row as Row);
+      rowCount++;
+      if (rowCount === 1 || rowCount % 10000 === 0) {
+        console.log(`[mssql] Stream received ${rowCount} rows, queue size: ${queue.length}`);
+      }
        // Pause upstream when queue grows too large to avoid unbounded memory.
       if (!paused && queue.length >= MAX_QUEUE && typeof (request as any).pause === "function") {
         try {
           (request as any).pause();
           paused = true;
+          console.log(`[mssql] Stream paused at ${rowCount} rows (queue full)`);
         } catch {}
       }
       resolver?.();
@@ -405,18 +412,21 @@ export async function mssqlReadStream(
     });
 
     request.on("error", (err) => {
+      console.error(`[mssql] Stream error after ${rowCount} rows:`, err);
       error = err;
       rejecter?.(err);
       rejecter = null;
     });
 
     request.on("done", () => {
+      console.log(`[mssql] Stream done, total rows: ${rowCount}`);
       done = true;
       resolver?.();
       resolver = null;
     });
 
     try {
+      let yielded = 0;
       while (true) {
         if (options?.isCancelled?.()) {
           try {
@@ -426,11 +436,16 @@ export async function mssqlReadStream(
         }
         if (queue.length) {
           yield queue.shift() as Row;
+          yielded++;
+          if (yielded === 1 || yielded % 10000 === 0) {
+            console.log(`[mssql] Yielded ${yielded} rows to consumer`);
+          }
           // Resume when back under threshold (50% of MAX_QUEUE)
           if (paused && queue.length < Math.floor(MAX_QUEUE / 2) && typeof (request as any).resume === "function") {
             try {
               (request as any).resume();
               paused = false;
+              console.log(`[mssql] Stream resumed at ${yielded} rows`);
             } catch {}
           }
           continue;
@@ -439,6 +454,7 @@ export async function mssqlReadStream(
           throw error;
         }
         if (done) {
+          console.log(`[mssql] Stream complete, yielded ${yielded} rows total`);
           break;
         }
         await Promise.race([
